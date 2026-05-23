@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Dashboard | Phân tích thời tiết Việt Nam</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <style>
+        .dashboard-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+        .dashboard-card {
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            width: 320px;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 28px rgba(0,0,0,0.15);
+        }
+        .card-header {
+            padding: 24px 20px;
+            color: white;
+            text-align: center;
+        }
+        .card-header.dash1 {
+            background: linear-gradient(135deg, #1e466e, #2a5a8a);
+        }
+        .card-header.dash2 {
+            background: linear-gradient(135deg, #4a6a5a, #5a8a6a);
+        }
+        .card-header.dash3 {
+            background: linear-gradient(135deg, #1e4a3a, #2d6a4f);
+        }
+        .card-header h2 {
+            margin: 0;
+            font-size: 1.6rem;
+        }
+        .card-header p {
+            margin: 8px 0 0;
+            opacity: 0.85;
+            font-size: 0.8rem;
+        }
+        .card-body {
+            padding: 20px;
+            background: #f8fafc;
+        }
+        .card-body p {
+            margin: 0 0 12px;
+            color: #4a5568;
+            line-height: 1.5;
+            font-size: 0.85rem;
+        }
+        .task-badge {
+            display: inline-block;
+            background: #e2e8f0;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            margin: 4px 4px 0 0;
+            color: #2d3748;
+        }
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: #6b7280;
+            font-size: 0.75rem;
+            border-top: 1px solid #e5e7eb;
+            margin-top: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card" style="margin-top: 20px;">
+            <div class="header" style="text-align: center;">
+                <h1>🌤️ Weather Dashboard Việt Nam</h1>
+                <p>Phân tích dữ liệu thời tiết 25.766 bản ghi | 63 tỉnh thành | 2 năm</p>
+            </div>
+
+            <div class="dashboard-grid">
+                <!-- Dashboard 1: Nhiệt độ -->
+                <a href="dashboard1_nhietdo.html" class="dashboard-card">
+                    <div class="card-header dash1">
+                        <h2>🌡️ Dashboard 1</h2>
+                        <p>Phân tích nhiệt độ</p>
+                    </div>
+                    <div class="card-body">
+                        <p>Phân bố nhiệt độ theo thời gian, so sánh giữa các vùng, bản đồ nhiệt độ, ven biển vs nội địa.</p>
+                        <div>
+                            <span class="task-badge">Task 1</span>
+                            <span class="task-badge">Task 2</span>
+                            <span class="task-badge">Task 4</span>
+                            <span class="task-badge">Task 5</span>
+                        </div>
+                    </div>
+                </a>
+
+                <!-- Dashboard 2: Thời tiết & Không gian -->
+                <a href="dashboard2_thoitiet.html" class="dashboard-card">
+                    <div class="card-header dash2">
+                        <h2>🌧️ Dashboard 2</h2>
+                        <p>Thời tiết & không gian</p>
+                    </div>
+                    <div class="card-body">
+                        <p>Mật độ điểm đo, tần suất trạng thái thời tiết, nhiệt độ theo trạng thái, so sánh thời tiết giữa các vùng.</p>
+                        <div>
+                            <span class="task-badge">Task 3</span>
+                            <span class="task-badge">Task 6</span>
+                            <span class="task-badge">Task 7</span>
+                            <span class="task-badge">Task 8</span>
+                            <span class="task-badge">Task 9</span>
+                        </div>
+                    </div>
+                </a>
+
+                <!-- Dashboard 3: UV & Ánh sáng -->
+                <a href="dashboard3_uv.html" class="dashboard-card">
+                    <div class="card-header dash3">
+                        <h2>☀️ Dashboard 3</h2>
+                        <p>UV & Ánh sáng</p>
+                    </div>
+                    <div class="card-body">
+                        <p>Phân tích mối quan hệ UV - Nhiệt độ, độ dài ban ngày, và ảnh hưởng của daylength đến UV.</p>
+                        <div>
+                            <span class="task-badge">Task 10</span>
+                            <span class="task-badge">Task 11</span>
+                            <span class="task-badge">Task 12</span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="footer">
+                📊 Dữ liệu từ 2024-2025 | 🏢 63 tỉnh thành | ☀️ 25.766 bản ghi thời tiết
+            </div>
+        </div>
+    </div>
+</body>
+</html>

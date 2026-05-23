@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard 3 | UV & Ánh sáng</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* Bố cục 2 cột cho Task 10 và Task 12 */
+        .two-columns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            padding: 20px;
+        }
+        .column {
+            flex: 1;
+            min-width: 400px;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .column-header {
+            background: #eef2f0;
+            padding: 12px 20px;
+            border-bottom: 1px solid #dde8e0;
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: #1e4a3a;
+        }
+        @media (max-width: 900px) {
+            .two-columns { flex-direction: column; }
+            .column { min-width: auto; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <div class="header">
+            <h1>☀️ Dashboard 3: UV & Ánh sáng</h1>
+            <p>Phân tích mối quan hệ UV – Nhiệt độ (Task 10) | Độ dài ban ngày – UV (Task 12)</p>
+        </div>
+
+        <!-- Upload file CSV chung cho cả 2 task -->
+        <div class="upload-area" id="uploadArea">
+            📂 Click hoặc kéo thả file CSV (df_weather_fixed_utf8_cleaned.csv)
+        </div>
+        <input type="file" id="fileInput" accept=".csv" style="display: none;">
+
+        <!-- Bộ lọc chung cho cả 2 dashboard -->
+        <div id="filterSection" style="display: none;">
+            <div class="filters">
+                <div class="filter-group">
+                    <label>📆 Năm</label>
+                    <select id="yearFilter"><option value="all">Tất cả</option></select>
+                </div>
+                <div class="filter-group">
+                    <label>📅 Tháng</label>
+                    <select id="monthFilter">
+                        <option value="all">Tất cả</option>
+                        <option value="1">Tháng 1</option><option value="2">Tháng 2</option>
+                        <option value="3">Tháng 3</option><option value="4">Tháng 4</option>
+                        <option value="5">Tháng 5</option><option value="6">Tháng 6</option>
+                        <option value="7">Tháng 7</option><option value="8">Tháng 8</option>
+                        <option value="9">Tháng 9</option><option value="10">Tháng 10</option>
+                        <option value="11">Tháng 11</option><option value="12">Tháng 12</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>📅 Ngày</label>
+                    <select id="dayFilter"><option value="all">Tất cả</option></select>
+                </div>
+                <div class="filter-group">
+                    <label>&nbsp;</label>
+                    <button id="resetBtn">🔄 Đặt lại</button>
+                </div>
+            </div>
+
+            <!-- Thông báo lỗi / chờ dữ liệu -->
+            <div id="globalMsg" class="note" style="color:#c0392b; display:none;"></div>
+        </div>
+
+        <!-- Khu vực 2 task (Task 10 + Task 12) -->
+        <div class="two-columns" id="tasksContainer" style="display: none;">
+            <!-- Cột trái: Task 10 - UV vs Nhiệt độ -->
+            <div class="column">
+                <div class="column-header">☀️ Task 10: Chỉ số UV vs Nhiệt độ tối đa</div>
+                <div class="group-stats" id="groupStats10">
+                    <div class="group-stat low-uv-bg"><span>🔵 UV thấp (&lt;3)</span><div class="avg" id="lowUvAvg">--</div><span id="lowUvCount">0 điểm</span></div>
+                    <div class="group-stat mid-uv-bg"><span>🟡 UV TB (3–5)</span><div class="avg" id="midUvAvg">--</div><span id="midUvCount">0 điểm</span></div>
+                    <div class="group-stat high-uv-bg"><span>🔴 UV cao (&gt;5)</span><div class="avg" id="highUvAvg">--</div><span id="highUvCount">0 điểm</span></div>
+                </div>
+                <div class="stats-bar">
+                    <div class="stat"><span class="stat-label">📈 Hệ số r</span><div class="stat-value" id="rVal10">--</div></div>
+                    <div class="stat"><span class="stat-label">🎯 Độ mạnh (Field, 2009)</span><div class="stat-value" id="strength10">--</div></div>
+                    <div class="stat"><span class="stat-label">📅 Số điểm</span><div class="stat-value" id="count10">0</div></div>
+                </div>
+                <div class="chart-container" style="position: relative;">
+                    <svg id="scatter10" width="100%" height="400" viewBox="0 0 700 400"></svg>
+                </div>
+                <div class="note">🔍 Hover → xem chi tiết | 🔵 UV&lt;3 🟡 3–5 🔴 &gt;5 | Đường đỏ = hồi quy</div>
+            </div>
+
+            <!-- Cột phải: Task 12 - Độ dài ban ngày vs UV -->
+            <div class="column">
+                <div class="column-header">🌞 Task 12: Độ dài ban ngày vs Chỉ số UV</div>
+                <div class="group-stats" id="groupStats12">
+                    <div class="group-stat red-bg"><span>🔴 Ngày ngắn (&lt;11h)</span><div class="avg" id="shortAvg">--</div><span id="shortCount">0 điểm</span></div>
+                    <div class="group-stat green-bg"><span>🟢 Ngày TB (11–13h)</span><div class="avg" id="midAvg">--</div><span id="midCount">0 điểm</span></div>
+                    <div class="group-stat blue-bg"><span>🔵 Ngày dài (&gt;13h)</span><div class="avg" id="longAvg">--</div><span id="longCount">0 điểm</span></div>
+                </div>
+                <div class="stats-bar">
+                    <div class="stat"><span class="stat-label">📈 Hệ số r</span><div class="stat-value" id="rVal12">--</div></div>
+                    <div class="stat"><span class="stat-label">🎯 Độ mạnh (Field, 2009)</span><div class="stat-value" id="strength12">--</div></div>
+                    <div class="stat"><span class="stat-label">📅 Số điểm</span><div class="stat-value" id="count12">0</div></div>
+                </div>
+                <div class="chart-container" style="position: relative;">
+                    <svg id="scatter12" width="100%" height="400" viewBox="0 0 700 400"></svg>
+                </div>
+                <div class="note">🔍 Hover → xem chi tiết | 🔴 &lt;11h 🟢 11–13h 🔵 &gt;13h | Đường đỏ = hồi quy</div>
+            </div>
+        </div>
+        <div id="noDataMsg" class="no-data">⬆️ Hãy chọn file CSV để bắt đầu</div>
+    </div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+    (function(){
+        // ==================== DỮ LIỆU TOÀN CỤC ====================
+        let fullDataUV = [];     // { uv, temp, year, month, day, date, location }
+        let fullDataDL = [];     // { uv, daylength, year, month, day, date, location }
+
+        let svg10, g10, xScale10, yScale10, innerW10, innerH10;
+        let svg12, g12, xScale12, yScale12, innerW12, innerH12;
+
+        // ==================== KHỞI TẠO SVG ====================
+        function initSVGs() {
+            // Task 10: UV vs Nhiệt độ
+            svg10 = d3.select("#scatter10");
+            svg10.attr("width", "100%").attr("height", "100%").attr("viewBox", "0 0 700 400");
+            svg10.selectAll("*").remove();
+            const margin10 = { top: 30, right: 25, bottom: 45, left: 55 };
+            innerW10 = 700 - margin10.left - margin10.right;
+            innerH10 = 400 - margin10.top - margin10.bottom;
+            g10 = svg10.append("g").attr("transform", `translate(${margin10.left},${margin10.top})`);
+            xScale10 = d3.scaleLinear().range([0, innerW10]);
+            yScale10 = d3.scaleLinear().range([innerH10, 0]);
+            g10.append("g").attr("class", "x-axis").attr("transform", `translate(0,${innerH10})`);
+            g10.append("g").attr("class", "y-axis");
+            g10.append("text").attr("class", "x-label").attr("x", innerW10/2).attr("y", innerH10+30).attr("text-anchor", "middle").style("fill","#1e466e").style("font-weight","bold").text("Chỉ số UV");
+            g10.append("text").attr("class", "y-label").attr("x", -innerH10/2).attr("y", -40).attr("text-anchor", "middle").attr("transform","rotate(-90)").style("fill","#1e466e").style("font-weight","bold").text("Nhiệt độ (°C)");
+            g10.append("line").attr("class", "reg-line").attr("stroke", "#e63946").attr("stroke-width", 2).attr("stroke-dasharray", "5,5");
+
+            // Task 12: Daylength vs UV
+            svg12 = d3.select("#scatter12");
+            svg12.attr("width", "100%").attr("height", "100%").attr("viewBox", "0 0 700 400");
+            svg12.selectAll("*").remove();
+            const margin12 = { top: 30, right: 25, bottom: 45, left: 55 };
+            innerW12 = 700 - margin12.left - margin12.right;
+            innerH12 = 400 - margin12.top - margin12.bottom;
+            g12 = svg12.append("g").attr("transform", `translate(${margin12.left},${margin12.top})`);
+            xScale12 = d3.scaleLinear().range([0, innerW12]);
+            yScale12 = d3.scaleLinear().range([innerH12, 0]);
+            g12.append("g").attr("class", "x-axis").attr("transform", `translate(0,${innerH12})`);
+            g12.append("g").attr("class", "y-axis");
+            g12.append("text").attr("class", "x-label").attr("x", innerW12/2).attr("y", innerH12+30).attr("text-anchor", "middle").style("fill","#2d6a4f").style("font-weight","bold").text("Độ dài ban ngày (giờ)");
+            g12.append("text").attr("class", "y-label").attr("x", -innerH12/2).attr("y", -40).attr("text-anchor", "middle").attr("transform","rotate(-90)").style("fill","#2d6a4f").style("font-weight","bold").text("Chỉ số UV");
+            g12.append("line").attr("class", "reg-line").attr("stroke", "#e63946").attr("stroke-width", 2).attr("stroke-dasharray", "5,5");
+        }
+
+        // ==================== MÀU SẮC ====================
+        function getUvColor(uv) {
+            if (uv < 3) return "#4a8aca";
+            if (uv <= 5) return "#e6b422";
+            return "#e64a2a";
+        }
+        function getGroupColor(dl) {
+            if (dl < 11) return "#e63946";
+            if (dl <= 13) return "#2e8b57";
+            return "#1e4a8a";
+        }
+
+        // ==================== XỬ LÝ UPLOAD & PARSE CSV ====================
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        uploadArea.onclick = () => fileInput.click();
+        uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.style.borderColor = '#40916c'; };
+        uploadArea.ondragleave = () => uploadArea.style.borderColor = '#2d6a4f';
+        uploadArea.ondrop = (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); };
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => parseCSV(ev.target.result);
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        function parseCSV(csvText) {
+            const lines = csvText.split(/\r?\n/);
+            if (lines.length < 2) return;
+            const headers = lines[0].split(',').map(h => h.replace(/["']/g, '').trim());
+            const idxUV = headers.indexOf('day.uv');
+            const idxTemp = headers.indexOf('day.maxtemp_c');
+            const idxSunrise = headers.indexOf('astro.sunrise');
+            const idxSunset = headers.indexOf('astro.sunset');
+            const idxLoc = headers.indexOf('location.name');
+            const idxDate = headers.indexOf('date');
+
+            if (idxUV === -1 || idxTemp === -1 || idxSunrise === -1 || idxSunset === -1) {
+                alert("Thiếu cột dữ liệu cần thiết (day.uv, day.maxtemp_c, astro.sunrise, astro.sunset)");
+                return;
+            }
+
+            fullDataUV = [];
+            fullDataDL = [];
+            for (let i = 1; i < lines.length; i++) {
+                let row = lines[i].trim();
+                if (!row) continue;
+                let cols = row.split(',');
+                let uv = parseFloat(cols[idxUV]);
+                let temp = parseFloat(cols[idxTemp]);
+                let sunrise = timeToHours(cols[idxSunrise]);
+                let sunset = timeToHours(cols[idxSunset]);
+                if (isNaN(uv) || isNaN(temp) || isNaN(sunrise) || isNaN(sunset) || sunset <= sunrise) continue;
+                let daylength = sunset - sunrise;
+                let location = idxLoc !== -1 ? cols[idxLoc] : "N/A";
+                let dateRaw = idxDate !== -1 ? cols[idxDate] : "";
+                let { year, month, day } = parseDateToYMD(dateRaw);
+                if (year === null || month === null || day === null) continue;
+                fullDataUV.push({ uv, temp, year, month, day, date: dateRaw, location });
+                fullDataDL.push({ uv, daylength, year, month, day, date: dateRaw, location });
+            }
+
+            if (fullDataUV.length === 0) { alert("Không có dữ liệu hợp lệ"); return; }
+
+            document.getElementById('filterSection').style.display = 'block';
+            document.getElementById('tasksContainer').style.display = 'flex';
+            document.getElementById('noDataMsg').style.display = 'none';
+            initSVGs();
+
+            // Populate năm
+            let years = [...new Set(fullDataUV.map(d => d.year))].sort();
+            let yearSelect = document.getElementById('yearFilter');
+            yearSelect.innerHTML = '<option value="all">Tất cả</option>';
+            years.forEach(y => yearSelect.innerHTML += `<option value="${y}">${y}</option>`);
+
+            // Sự kiện lọc
+            document.getElementById('yearFilter').onchange = () => { updateDayOptionsForBoth(); applyFilters(); };
+            document.getElementById('monthFilter').onchange = () => { updateDayOptionsForBoth(); applyFilters(); };
+            document.getElementById('dayFilter').onchange = () => applyFilters();
+            document.getElementById('resetBtn').onclick = () => {
+                document.getElementById('yearFilter').value = 'all';
+                document.getElementById('monthFilter').value = 'all';
+                document.getElementById('dayFilter').innerHTML = '<option value="all">Tất cả</option>';
+                applyFilters();
+            };
+            updateDayOptionsForBoth();
+            applyFilters();
+        }
+
+        function updateDayOptionsForBoth() {
+            const yearVal = document.getElementById('yearFilter').value;
+            const monthVal = document.getElementById('monthFilter').value;
+            updateDayOptions(yearVal, monthVal, 'dayFilter');
+        }
+
+        // ==================== RENDER TASK 10 ====================
+        function renderTask10(data) {
+            document.getElementById('count10').innerText = data.length;
+            if (data.length === 0) {
+                g10.selectAll("circle").remove();
+                g10.select(".reg-line").attr("x1",0).attr("y1",0).attr("x2",0).attr("y2",0);
+                document.getElementById('rVal10').innerText = '--';
+                document.getElementById('strength10').innerText = '--';
+                document.getElementById('lowUvAvg').innerHTML = '--';
+                document.getElementById('midUvAvg').innerHTML = '--';
+                document.getElementById('highUvAvg').innerHTML = '--';
+                document.getElementById('lowUvCount').innerHTML = '0 điểm';
+                document.getElementById('midUvCount').innerHTML = '0 điểm';
+                document.getElementById('highUvCount').innerHTML = '0 điểm';
+                return;
+            }
+
+            let low = data.filter(d => d.uv < 3).map(d => d.temp);
+            let mid = data.filter(d => d.uv >= 3 && d.uv <= 5).map(d => d.temp);
+            let high = data.filter(d => d.uv > 5).map(d => d.temp);
+            document.getElementById('lowUvAvg').innerHTML = low.length ? (low.reduce((a,b)=>a+b,0)/low.length).toFixed(1)+'°C' : '--';
+            document.getElementById('midUvAvg').innerHTML = mid.length ? (mid.reduce((a,b)=>a+b,0)/mid.length).toFixed(1)+'°C' : '--';
+            document.getElementById('highUvAvg').innerHTML = high.length ? (high.reduce((a,b)=>a+b,0)/high.length).toFixed(1)+'°C' : '--';
+            document.getElementById('lowUvCount').innerHTML = low.length+' điểm';
+            document.getElementById('midUvCount').innerHTML = mid.length+' điểm';
+            document.getElementById('highUvCount').innerHTML = high.length+' điểm';
+
+            let xVals = data.map(d => d.uv), yVals = data.map(d => d.temp);
+            let r = pearsonCorr(xVals, yVals);
+            document.getElementById('rVal10').innerText = r.toFixed(4);
+            document.getElementById('strength10').innerText = getStrengthText(r);
+
+            let xMin = d3.min(xVals), xMax = d3.max(xVals);
+            let yMin = d3.min(yVals), yMax = d3.max(yVals);
+            if (xMin === xMax) { xMin -= 0.5; xMax += 0.5; }
+            if (yMin === yMax) { yMin -= 0.5; yMax += 0.5; }
+            xScale10.domain([Math.max(0, xMin), Math.min(12, xMax)]).nice();
+            yScale10.domain([yMin, yMax]).nice();
+            g10.select(".x-axis").call(d3.axisBottom(xScale10).ticks(5));
+            g10.select(".y-axis").call(d3.axisLeft(yScale10).ticks(5));
+
+            let circles = g10.selectAll("circle").data(data, d => `${d.location}-${d.date}`);
+            circles.exit().remove();
+            circles.enter().append("circle").attr("r", 4).attr("stroke","#333").attr("stroke-width",0.3)
+                .merge(circles).transition().duration(200)
+                .attr("cx", d => xScale10(d.uv)).attr("cy", d => yScale10(d.temp))
+                .attr("fill", d => getUvColor(d.uv));
+
+            let reg = linearReg(xVals, yVals);
+            let x1 = xScale10.domain()[0], x2 = xScale10.domain()[1];
+            let y1 = reg.slope * x1 + reg.intercept, y2 = reg.slope * x2 + reg.intercept;
+            g10.select(".reg-line").attr("x1", xScale10(x1)).attr("y1", yScale10(y1)).attr("x2", xScale10(x2)).attr("y2", yScale10(y2));
+            
+            g10.selectAll("circle").on("mouseover", function(e,d){
+                d3.select("#tooltip").remove();
+                d3.select("body").append("div").attr("id","tooltip").attr("class","tooltip-d3").style("opacity",1)
+                    .html(`${d.date}<br>${d.location}<br>UV: ${d.uv.toFixed(2)}<br>Nhiệt độ: ${d.temp.toFixed(1)}°C`)
+                    .style("left", (e.pageX+15)+"px").style("top", (e.pageY-35)+"px");
+            }).on("mousemove", function(e){ d3.select("#tooltip").style("left", (e.pageX+15)+"px").style("top", (e.pageY-35)+"px"); })
+              .on("mouseout", function(){ d3.select("#tooltip").remove(); });
+        }
+
+        // ==================== RENDER TASK 12 ====================
+        function renderTask12(data) {
+            document.getElementById('count12').innerText = data.length;
+            if (data.length === 0) {
+                g12.selectAll("circle").remove();
+                g12.select(".reg-line").attr("x1",0).attr("y1",0).attr("x2",0).attr("y2",0);
+                document.getElementById('rVal12').innerText = '--';
+                document.getElementById('strength12').innerText = '--';
+                document.getElementById('shortAvg').innerHTML = '--';
+                document.getElementById('midAvg').innerHTML = '--';
+                document.getElementById('longAvg').innerHTML = '--';
+                document.getElementById('shortCount').innerHTML = '0 điểm';
+                document.getElementById('midCount').innerHTML = '0 điểm';
+                document.getElementById('longCount').innerHTML = '0 điểm';
+                return;
+            }
+
+            let short = data.filter(d => d.daylength < 11).map(d => d.uv);
+            let mid = data.filter(d => d.daylength >= 11 && d.daylength <= 13).map(d => d.uv);
+            let long = data.filter(d => d.daylength > 13).map(d => d.uv);
+            document.getElementById('shortAvg').innerHTML = short.length ? (short.reduce((a,b)=>a+b,0)/short.length).toFixed(2) : '--';
+            document.getElementById('midAvg').innerHTML = mid.length ? (mid.reduce((a,b)=>a+b,0)/mid.length).toFixed(2) : '--';
+            document.getElementById('longAvg').innerHTML = long.length ? (long.reduce((a,b)=>a+b,0)/long.length).toFixed(2) : '--';
+            document.getElementById('shortCount').innerHTML = short.length+' điểm';
+            document.getElementById('midCount').innerHTML = mid.length+' điểm';
+            document.getElementById('longCount').innerHTML = long.length+' điểm';
+
+            let xVals = data.map(d => d.daylength), yVals = data.map(d => d.uv);
+            let r = pearsonCorr(xVals, yVals);
+            document.getElementById('rVal12').innerText = r.toFixed(4);
+            document.getElementById('strength12').innerText = getStrengthText(r);
+
+            let xMin = d3.min(xVals), xMax = d3.max(xVals);
+            let yMin = d3.min(yVals), yMax = d3.max(yVals);
+            if (xMin === xMax) { xMin -= 0.5; xMax += 0.5; }
+            if (yMin === yMax) { yMin -= 0.5; yMax += 0.5; }
+            xScale12.domain([xMin, xMax]).nice();
+            yScale12.domain([0, Math.max(12, yMax)]).nice();
+            g12.select(".x-axis").call(d3.axisBottom(xScale12).ticks(5));
+            g12.select(".y-axis").call(d3.axisLeft(yScale12).ticks(5));
+
+            let circles = g12.selectAll("circle").data(data, d => `${d.location}-${d.date}`);
+            circles.exit().remove();
+            circles.enter().append("circle").attr("r", 4).attr("stroke","#333").attr("stroke-width",0.3)
+                .merge(circles).transition().duration(200)
+                .attr("cx", d => xScale12(d.daylength)).attr("cy", d => yScale12(d.uv))
+                .attr("fill", d => getGroupColor(d.daylength));
+
+            let reg = linearReg(xVals, yVals);
+            let x1 = xScale12.domain()[0], x2 = xScale12.domain()[1];
+            let y1 = reg.slope * x1 + reg.intercept, y2 = reg.slope * x2 + reg.intercept;
+            g12.select(".reg-line").attr("x1", xScale12(x1)).attr("y1", yScale12(y1)).attr("x2", xScale12(x2)).attr("y2", yScale12(y2));
+            
+            g12.selectAll("circle").on("mouseover", function(e,d){
+                d3.select("#tooltip12").remove();
+                d3.select("body").append("div").attr("id","tooltip12").attr("class","tooltip-d3").style("opacity",1)
+                    .html(`${d.date}<br>${d.location}<br>UV: ${d.uv.toFixed(2)}<br>Daylength: ${d.daylength.toFixed(2)} giờ`)
+                    .style("left", (e.pageX+15)+"px").style("top", (e.pageY-35)+"px");
+            }).on("mousemove", function(e){ d3.select("#tooltip12").style("left", (e.pageX+15)+"px").style("top", (e.pageY-35)+"px"); })
+              .on("mouseout", function(){ d3.select("#tooltip12").remove(); });
+        }
+
+        // ==================== LỌC TỔNG HỢP ====================
+        function applyFilters() {
+            let yearVal = document.getElementById('yearFilter').value;
+            let monthVal = document.getElementById('monthFilter').value;
+            let dayVal = document.getElementById('dayFilter').value;
+
+            let filteredUV = fullDataUV.filter(d => {
+                if (yearVal !== 'all' && d.year != yearVal) return false;
+                if (monthVal !== 'all' && d.month != parseInt(monthVal)) return false;
+                if (dayVal !== 'all' && d.day != parseInt(dayVal)) return false;
+                return true;
+            });
+            let filteredDL = fullDataDL.filter(d => {
+                if (yearVal !== 'all' && d.year != yearVal) return false;
+                if (monthVal !== 'all' && d.month != parseInt(monthVal)) return false;
+                if (dayVal !== 'all' && d.day != parseInt(dayVal)) return false;
+                return true;
+            });
+            renderTask10(filteredUV);
+            renderTask12(filteredDL);
+        }
+    })();
+</script>
+</body>
+</html>

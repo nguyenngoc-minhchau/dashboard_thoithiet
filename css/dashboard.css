@@ -1,0 +1,240 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Cambria', 'Times New Roman', serif;
+    background: #eef2f0;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.card {
+    background: white;
+    border-radius: 28px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.header {
+    background: linear-gradient(135deg, #1e4a3a, #2d6a4f);
+    color: white;
+    padding: 20px 28px;
+    text-align: center;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.header p {
+    margin: 8px 0 0;
+    opacity: 0.85;
+    font-size: 0.85rem;
+}
+
+.sub-header {
+    background: #f0f4f0;
+    padding: 12px 24px;
+    border-bottom: 1px solid #dde8e0;
+    text-align: center;
+}
+
+.sub-header p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #2d6a4f;
+}
+
+.upload-area {
+    border: 2px dashed #2d6a4f;
+    border-radius: 20px;
+    padding: 24px;
+    margin: 20px 24px;
+    text-align: center;
+    cursor: pointer;
+    background: #fafdfa;
+    transition: all 0.2s;
+}
+
+.upload-area:hover {
+    background: #f0f7f0;
+    border-color: #40916c;
+}
+
+.filters {
+    background: #f8faf5;
+    padding: 16px 24px;
+    border-top: 1px solid #dde8e0;
+    border-bottom: 1px solid #dde8e0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.filter-group {
+    flex: 1;
+    min-width: 120px;
+    max-width: 180px;
+}
+
+.filter-group label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #2d6a4f;
+    margin-bottom: 4px;
+    text-align: center;
+}
+
+select, button, input {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 14px;
+    border: 1px solid #c8dbc8;
+    background: white;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+button {
+    background: #2d6a4f;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+button:hover {
+    background: #40916c;
+}
+
+.stats-bar {
+    display: flex;
+    gap: 20px;
+    padding: 16px 24px;
+    background: #f0f6f0;
+    flex-wrap: wrap;
+    justify-content: center;
+    text-align: center;
+}
+
+.group-stats {
+    display: flex;
+    gap: 20px;
+    padding: 16px 24px;
+    background: #e8f0e8;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-bottom: 1px solid #c8dcc8;
+}
+
+.stat, .group-stat {
+    background: white;
+    padding: 10px 20px;
+    border-radius: 40px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    min-width: 150px;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #2d6a4f;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.stat-value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    font-family: monospace;
+    color: #1e4a3a;
+}
+
+.group-stat span {
+    font-size: 0.7rem;
+    font-weight: bold;
+    display: block;
+}
+
+.group-stat .avg {
+    font-size: 1.1rem;
+    font-weight: bold;
+    font-family: monospace;
+    margin: 4px 0;
+}
+
+/* Task 10 colors */
+.low-uv-bg { background: #cfe8ff; color: #1a4a7a; }
+.mid-uv-bg { background: #fff0cf; color: #8a6a1a; }
+.high-uv-bg { background: #ffcfcf; color: #8a1a1a; }
+
+/* Task 12 colors */
+.red-bg { background: #ffe0e0; color: #c0392b; }
+.green-bg { background: #e0ffe0; color: #2d6a4f; }
+.blue-bg { background: #e0e8ff; color: #1e4a8a; }
+
+.chart-container {
+    padding: 20px 24px;
+    background: white;
+    position: relative;
+    overflow-x: auto;
+}
+
+svg {
+    display: block;
+    margin: 0 auto;
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #e2ece2;
+}
+
+.tooltip-d3 {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.85);
+    color: #f0f0f0;
+    padding: 8px 14px;
+    border-radius: 14px;
+    font-size: 11px;
+    font-family: monospace;
+    pointer-events: none;
+    z-index: 100;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+.note {
+    padding: 12px 24px 20px;
+    font-size: 11px;
+    color: #5a7a6a;
+    text-align: center;
+    border-top: 1px solid #e0ece0;
+}
+
+.no-data {
+    text-align: center;
+    padding: 60px;
+    color: #6a8e7a;
+    font-size: 14px;
+}
+
+.range-inputs {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.range-inputs input {
+    width: 100%;
+}
