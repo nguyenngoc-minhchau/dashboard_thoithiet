@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard 1 | Phân tích Nhiệt độ</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* ── Layout chung ── */
+        .section-title {
+            background: #eef2f0;
+            padding: 12px 20px;
+            border-bottom: 1px solid #dde8e0;
+            font-weight: bold;
+            font-size: 1.05rem;
+            color: #1e4a3a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .task-panel {
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+            overflow: hidden;
+            margin: 16px 20px;
+        }
+        .task-body {
+            padding: 16px 20px;
+        }
+        /* ── Task 1: Line chart ── */
+        #task1-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+            justify-content: center;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            padding: 4px 10px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            color: #475569;
+            transition: all 0.2s;
+        }
+        .legend-item:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .legend-item.inactive { opacity: 0.3; border-color: transparent; background: transparent; }
+        .legend-color { width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+        .region-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+        .vertex-point { cursor: pointer; }
+        /* ── Task 4: horizontal bar ── */
+        .task4-controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+            font-size: 13px;
+        }
+        .ctrl-group { display: flex; align-items: center; gap: 8px; }
+        .ctrl-group label { color: #555; }
+        input[type=range] { width: 130px; accent-color: #2d6a4f; cursor: pointer; }
+        .range-val { font-weight: 700; color: #2d6a4f; min-width: 48px; }
+        #task4Wrap { overflow-y: auto; max-height: 480px; }
+        /* ── Task 5: grouped bar ── */
+        .task5-selectors {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .task5-selectors .sel-group { display: flex; flex-direction: column; gap: 4px; }
+        .task5-selectors .sel-group label { font-size: 11px; font-weight: 700; color: #2d6a4f; text-transform: uppercase; }
+        .task5-selectors select { width: 200px; padding: 7px 10px; border-radius: 12px; border: 1px solid #c8dbc8; font-size: 0.82rem; }
+        /* ── Task 2: bar chart ── */
+        .task2-filter { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 13px; }
+        .task2-filter select { width: auto; padding: 6px 12px; border-radius: 12px; border: 1px solid #c8dbc8; font-size: 0.82rem; }
+        /* scroll wrapper for wide charts */
+        .chart-scroll { overflow-x: auto; }
+        /* two-col layout */
+        .two-col { display: flex; flex-wrap: wrap; gap: 20px; padding: 16px 20px; }
+        .two-col .task-panel { flex: 1; min-width: 420px; margin: 0; }
+        /* tooltip */
+        .d3-tip {
+            position: absolute;
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 200;
+            line-height: 1.5;
+        }
+        /* color legend strip for task5 */
+        .legend-strip {
+            display: flex;
+            gap: 14px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .legend-dot {
+            display: inline-block;
+            width: 12px; height: 12px;
+            border-radius: 3px;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+<div class="card" style="margin-top:16px;">
+
+    <div class="header">
+        <h1>🌡️ Dashboard 1: Phân tích Nhiệt độ</h1>
+        <p>Xu hướng nhiệt độ theo vùng · Trung bình theo khu vực · Nhiệt độ tỉnh/thành · Ven Biển vs Nội Địa</p>
+    </div>
+
+    <!-- Upload -->
+    <div class="upload-area" id="uploadArea">📂 Click hoặc kéo thả file <b>df_weather_fixed_utf8_cleaned.csv</b></div>
+    <input type="file" id="fileInput" accept=".csv" style="display:none;">
+
+    <!-- Filters -->
+    <div id="filterSection" style="display:none;">
+        <div class="filters">
+            <div class="filter-group">
+                <label>📆 Năm</label>
+                <select id="yearFilter"><option value="all">Tất cả</option></select>
+            </div>
+            <div class="filter-group">
+                <label>📅 Tháng</label>
+                <select id="monthFilter">
+                    <option value="all">Tất cả</option>
+                    <option value="1">Tháng 1</option><option value="2">Tháng 2</option>
+                    <option value="3">Tháng 3</option><option value="4">Tháng 4</option>
+                    <option value="5">Tháng 5</option><option value="6">Tháng 6</option>
+                    <option value="7">Tháng 7</option><option value="8">Tháng 8</option>
+                    <option value="9">Tháng 9</option><option value="10">Tháng 10</option>
+                    <option value="11">Tháng 11</option><option value="12">Tháng 12</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>🔄 Reset</label>
+                <button id="resetBtn">Đặt lại</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="noDataMsg" class="no-data">⬆️ Hãy chọn file CSV để bắt đầu</div>
+    <div id="mainContent" style="display:none;">
+
+        <!-- ════ TASK 1: Line Chart ════ -->
+        <div class="task-panel" style="margin-top:20px;">
+            <div class="section-title">📈 Task 1: Diễn biến nhiệt độ trung bình theo Vùng Địa Lý</div>
+            <div class="task-body">
+                <div id="task1-legend"></div>
+                <div class="chart-scroll">
+                    <svg id="chart1" width="860" height="380"></svg>
+                </div>
+                <div class="note">💡 Click vào vùng trong chú thích hoặc đường để highlight · Click nền SVG để bỏ chọn</div>
+            </div>
+        </div>
+
+        <!-- ════ TASK 2 + TASK 4 (2 cột) ════ -->
+        <div class="two-col">
+            <!-- Task 2 -->
+            <div class="task-panel">
+                <div class="section-title">📊 Task 2: Trung bình nhiệt độ theo Khu vực</div>
+                <div class="task-body">
+                    <div class="task2-filter">
+                        <label>Chọn Vùng:</label>
+                        <select id="task2RegionFilter"></select>
+                    </div>
+                    <div class="chart-scroll">
+                        <svg id="chart2" width="520" height="380"></svg>
+                    </div>
+                    <div class="note">🔵 Xanh = vùng thường · 🔴 Đỏ = Trung bình cả nước</div>
+                </div>
+            </div>
+
+            <!-- Task 4 -->
+            <div class="task-panel">
+                <div class="section-title">🌡️ Task 4: Nhiệt độ TB các tỉnh/thành phố</div>
+                <div class="task-body">
+                    <div class="task4-controls">
+                        <span>Lọc khoảng nhiệt độ:</span>
+                        <div class="ctrl-group">
+                            <label>Từ</label>
+                            <input type="range" id="t4lo" min="16" max="29" step="0.5" value="16">
+                            <span class="range-val" id="t4loVal">16.0°C</span>
+                        </div>
+                        <div class="ctrl-group">
+                            <label>Đến</label>
+                            <input type="range" id="t4hi" min="16" max="29" step="0.5" value="29">
+                            <span class="range-val" id="t4hiVal">29.0°C</span>
+                        </div>
+                    </div>
+                    <div id="task4Wrap">
+                        <canvas id="chart4"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════ TASK 5: Grouped Bar ════ -->
+        <div class="task-panel">
+            <div class="section-title">🏖️ Task 5: So sánh Ven Biển vs Nội Địa</div>
+            <div class="task-body">
+                <div class="task5-selectors">
+                    <div class="sel-group">
+                        <label>🌊 Ven Biển</label>
+                        <select id="task5Coastal"></select>
+                    </div>
+                    <div class="sel-group">
+                        <label>🏔️ Nội Địa</label>
+                        <select id="task5Inland"></select>
+                    </div>
+                </div>
+                <div class="legend-strip">
+                    <span><span class="legend-dot" style="background:#2d6a4f;"></span>Ven biển</span>
+                    <span><span class="legend-dot" style="background:#dd6b20;"></span>Nội địa</span>
+                </div>
+                <div class="chart-scroll">
+                    <svg id="chart5" width="760" height="340"></svg>
+                </div>
+                <div class="note">💡 Hover vào cột để xem chi tiết</div>
+            </div>
+        </div>
+
+    </div><!-- end mainContent -->
+</div>
+</div>
+
+<!-- Tooltip -->
+<div class="d3-tip" id="d3tip"></div>
+
+<!-- Chart.js cho Task 4 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="js/common.js"></script>
+<script>
+(function(){
+    // ═══════════════════════════════════════
+    //  STATE TOÀN CỤC
+    // ═══════════════════════════════════════
+    let rawData = [];
+    let task4ProvinceData = [];
+    let task5CoastalData = [], task5InlandData = [];
+    let chart4Instance = null;
+
+    // Task 1 state
+    let t1SelectedRegion = null;
+    let t1Lines, t1Points, t1LegendItems;
+
+    // ═══════════════════════════════════════
+    //  UPLOAD
+    // ═══════════════════════════════════════
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput  = document.getElementById('fileInput');
+    uploadArea.onclick = () => fileInput.click();
+    uploadArea.ondragover = e => { e.preventDefault(); uploadArea.style.borderColor='#40916c'; };
+    uploadArea.ondragleave = () => uploadArea.style.borderColor='#2d6a4f';
+    uploadArea.ondrop = e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); };
+    fileInput.onchange = e => handleFile(e.target.files[0]);
+
+    function handleFile(file) {
+        const reader = new FileReader();
+        reader.onload = ev => initDashboard(ev.target.result);
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    // ═══════════════════════════════════════
+    //  PARSE CSV → rawData
+    // ═══════════════════════════════════════
+    function initDashboard(csvText) {
+        rawData = d3.csvParse(csvText);
+
+        // Populate year
+        const years = [...new Set(rawData.map(d => {
+            const p = parseDateToYMD(d.date);
+            return p.year;
+        }).filter(Boolean))].sort();
+        const yearSel = document.getElementById('yearFilter');
+        yearSel.innerHTML = '<option value="all">Tất cả</option>';
+        years.forEach(y => yearSel.innerHTML += `<option value="${y}">${y}</option>`);
+
+        // Show UI
+        document.getElementById('filterSection').style.display = 'block';
+        document.getElementById('mainContent').style.display = 'block';
+        document.getElementById('noDataMsg').style.display = 'none';
+        document.getElementById('uploadArea').style.display = 'none';
+
+        // Task 4: Tính province averages (không phụ thuộc filter thời gian)
+        const provMap = {};
+        rawData.forEach(d => {
+            const name = d['location.name'];
+            const t = parseFloat(d['day.avgtemp_c']);
+            if (!name || isNaN(t)) return;
+            if (!provMap[name]) provMap[name] = [];
+            provMap[name].push(t);
+        });
+        task4ProvinceData = Object.entries(provMap).map(([name, vals]) => ({
+            name,
+            v: +(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2)
+        })).sort((a,b) => b.v - a.v);
+
+        // Task 5: Tính province stats (terrain)
+        const provStats = {};
+        rawData.forEach(d => {
+            const name = d['location.name'];
+            if (!name) return;
+            if (!provStats[name]) provStats[name] = { terrain: d['location.terrain'], temp:[], precip:[], wind:[], humidity:[] };
+            const t = parseFloat(d['day.avgtemp_c']);
+            const p = parseFloat(d['day.totalprecip_mm']);
+            const w = parseFloat(d['day.maxwind_kph']);
+            const h = parseFloat(d['day.avghumidity']);
+            if (!isNaN(t)) provStats[name].temp.push(t);
+            if (!isNaN(p)) provStats[name].precip.push(p);
+            if (!isNaN(w)) provStats[name].wind.push(w);
+            if (!isNaN(h)) provStats[name].humidity.push(h);
+        });
+        const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+        const provinceList = Object.entries(provStats).map(([prov, s]) => ({
+            province: prov,
+            terrain: s.terrain,
+            temp: avg(s.temp),
+            precip: avg(s.precip),
+            wind: avg(s.wind),
+            humidity: avg(s.humidity)
+        }));
+        task5CoastalData = provinceList.filter(d => d.terrain === 'ven biển').sort((a,b)=>a.province.localeCompare(b.province));
+        task5InlandData  = provinceList.filter(d => d.terrain !== 'ven biển').sort((a,b)=>a.province.localeCompare(b.province));
+
+        // Task 2: Region filter populate
+        const task2RegionSel = document.getElementById('task2RegionFilter');
+        const regions2 = [...new Set(rawData.map(d=>d['location.region']).filter(Boolean))].sort();
+        task2RegionSel.innerHTML = '<option value="Tất cả">Tất cả</option>';
+        regions2.forEach(r => task2RegionSel.innerHTML += `<option value="${r}">${r}</option>`);
+        task2RegionSel.onchange = () => renderTask2(getFiltered());
+
+        // Task 5 selectors
+        const selC = document.getElementById('task5Coastal');
+        const selI = document.getElementById('task5Inland');
+        task5CoastalData.forEach(d => selC.innerHTML += `<option value="${d.province}">${d.province}</option>`);
+        task5InlandData.forEach(d  => selI.innerHTML += `<option value="${d.province}">${d.province}</option>`);
+        selC.onchange = () => renderTask5();
+        selI.onchange = () => renderTask5();
+
+        // Task 4 slider
+        document.getElementById('t4lo').oninput = updateTask4;
+        document.getElementById('t4hi').oninput = updateTask4;
+
+        // Filter events
+        document.getElementById('yearFilter').onchange = applyFilters;
+        document.getElementById('monthFilter').onchange = applyFilters;
+        document.getElementById('resetBtn').onclick = () => {
+            document.getElementById('yearFilter').value = 'all';
+            document.getElementById('monthFilter').value = 'all';
+            applyFilters();
+        };
+
+        applyFilters();
+    }
+
+    // ═══════════════════════════════════════
+    //  FILTER CHUNG
+    // ═══════════════════════════════════════
+    function getFiltered() {
+        const yr = document.getElementById('yearFilter').value;
+        const mo = document.getElementById('monthFilter').value;
+        return rawData.filter(d => {
+            const p = parseDateToYMD(d.date);
+            if (yr !== 'all' && p.year != yr) return false;
+            if (mo !== 'all' && p.month != parseInt(mo)) return false;
+            return true;
+        });
+    }
+
+    function applyFilters() {
+        const filtered = getFiltered();
+        renderTask1(filtered);
+        renderTask2(filtered);
+        updateTask4(); // task4 dùng province data riêng, không filter thời gian
+        renderTask5();
+    }
+
+    // ═══════════════════════════════════════
+    //  TASK 1 — Line chart theo vùng
+    // ═══════════════════════════════════════
+    function renderTask1(data) {
+        const svg = d3.select('#chart1');
+        svg.selectAll('*').remove();
+        document.getElementById('task1-legend').innerHTML = '';
+
+        const parseDate = d3.timeParse('%m/%d/%Y');
+        const formatDate = d3.timeFormat('%d/%m/%Y');
+
+        const cleaned = data.map(d => ({
+            date: parseDate(d.date),
+            region: d['location.region'],
+            avgTemp: +d['day.avgtemp_c']
+        })).filter(d => d.date && d.region && !isNaN(d.avgTemp));
+
+        if (cleaned.length === 0) return;
+
+        const rolled = d3.rollups(cleaned, v => d3.mean(v, d=>d.avgTemp), d=>d.region, d=>d.date);
+        const regionsData = rolled.map(([region, dates]) => ({
+            region,
+            values: dates.map(([date, avgTemp])=>({date, avgTemp})).sort((a,b)=>a.date-b.date)
+        }));
+
+        const W = 860, H = 380, m = {top:20, right:30, bottom:40, left:52};
+        const iW = W-m.left-m.right, iH = H-m.top-m.bottom;
+        const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+
+        const x = d3.scaleTime().domain(d3.extent(cleaned, d=>d.date)).range([0, iW]);
+        const y = d3.scaleLinear().domain([
+            d3.min(cleaned, d=>d.avgTemp)-1, d3.max(cleaned, d=>d.avgTemp)+1
+        ]).range([iH, 0]);
+        const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+        // Grid
+        g.append('g').attr('class','grid')
+            .call(d3.axisLeft(y).tickSize(-iW).tickFormat(''))
+            .selectAll('line').attr('stroke','#e5e7eb');
+        g.selectAll('.grid path').attr('stroke','none');
+
+        // Axes
+        g.append('g').attr('transform',`translate(0,${iH})`).call(d3.axisBottom(x).ticks(8).tickFormat(d3.timeFormat('%d/%m')));
+        g.append('g').call(d3.axisLeft(y).tickFormat(d=>d+'°C'));
+
+        const lineGen = d3.line().x(d=>x(d.date)).y(d=>y(d.avgTemp)).curve(d3.curveMonotoneX);
+
+        t1Lines = g.selectAll('.region-line').data(regionsData).enter().append('path')
+            .attr('class','region-line')
+            .attr('d', d=>lineGen(d.values))
+            .attr('stroke', d=>color(d.region))
+            .attr('stroke-width', 2.5)
+            .style('cursor','pointer')
+            .on('click', (e,d) => { e.stopPropagation(); toggleHighlight(d.region); });
+
+        const allPts = regionsData.flatMap(r => r.values.map(v=>({region:r.region, date:v.date, avgTemp:v.avgTemp})));
+        t1Points = g.selectAll('.vertex-point').data(allPts).enter().append('circle')
+            .attr('class','vertex-point')
+            .attr('cx', d=>x(d.date)).attr('cy', d=>y(d.avgTemp))
+            .attr('r', 3).attr('fill', d=>color(d.region)).attr('fill-opacity', 0.6)
+            .on('mouseover', function(e,d) {
+                if (t1SelectedRegion && t1SelectedRegion !== d.region) return;
+                d3.select(this).attr('r',6).attr('fill-opacity',1);
+                showTip(e, `<b>${formatDate(d.date)}</b><br><span style="color:${color(d.region)}">●</span> ${d.region}<br>Nhiệt độ: <b style="color:#38bdf8">${d.avgTemp.toFixed(1)}°C</b>`);
+            })
+            .on('mousemove', e => moveTip(e))
+            .on('mouseout', function() { d3.select(this).attr('r',3).attr('fill-opacity',0.6); hideTip(); });
+
+        // Legend
+        const legend = d3.select('#task1-legend');
+        t1LegendItems = legend.selectAll('.legend-item').data(regionsData).enter().append('div')
+            .attr('class','legend-item')
+            .on('click', (e,d) => { e.stopPropagation(); toggleHighlight(d.region); });
+        t1LegendItems.append('div').attr('class','legend-color').style('background', d=>color(d.region));
+        t1LegendItems.append('span').text(d=>d.region);
+
+        svg.on('click', () => { t1SelectedRegion=null; resetHighlight(); });
+
+        function toggleHighlight(regionName) {
+            if (t1SelectedRegion === regionName) { t1SelectedRegion=null; resetHighlight(); return; }
+            t1SelectedRegion = regionName;
+            t1Lines.style('opacity', d => d.region===regionName ? 1 : 0.08).attr('stroke-width', d => d.region===regionName ? 4 : 2);
+            t1Points.style('opacity', d => d.region===regionName ? 1 : 0.05);
+            t1LegendItems.classed('inactive', d => d.region!==regionName);
+        }
+        function resetHighlight() {
+            t1Lines.style('opacity',1).attr('stroke-width',2.5);
+            t1Points.style('opacity',1);
+            if (t1LegendItems) t1LegendItems.classed('inactive',false);
+        }
+    }
+
+    // ═══════════════════════════════════════
+    //  TASK 2 — Bar chart trung bình vùng
+    // ═══════════════════════════════════════
+    function renderTask2(data) {
+        const svg = d3.select('#chart2');
+        svg.selectAll('*').remove();
+
+        const selectedRegion = document.getElementById('task2RegionFilter').value;
+        const nationalAvg = d3.mean(data, d => +d['day.avgtemp_c']);
+
+        const grouped = Array.from(d3.rollup(data,
+            v => d3.mean(v, d => +d['day.avgtemp_c']),
+            d => d['location.region']
+        )).map(([region, temp]) => ({ region, temp: +temp.toFixed(1) }))
+          .filter(d => d.region);
+
+        let displayData = selectedRegion === 'Tất cả' ? [...grouped] : grouped.filter(d=>d.region===selectedRegion);
+        displayData.push({ region: 'TB Cả nước', temp: +nationalAvg.toFixed(1), isAvg: true });
+
+        const W=520, H=380, m={top:20, right:15, bottom:110, left:52};
+        svg.attr('width', W).attr('height', H);
+
+        const x = d3.scaleBand().domain(displayData.map(d=>d.region)).range([m.left, W-m.right]).padding(0.3);
+        const y = d3.scaleLinear().domain([0,35]).range([H-m.bottom, m.top]);
+
+        svg.selectAll('.bar').data(displayData).enter().append('rect')
+            .attr('x', d=>x(d.region)).attr('width', x.bandwidth())
+            .attr('y', H-m.bottom).attr('height', 0)
+            .attr('fill', d => d.isAvg ? '#e53e3e' : '#2d6a4f')
+            .attr('rx', 4)
+            .on('mouseover', (e,d) => showTip(e, `<b>${d.region}</b><br>Nhiệt độ TB: <b>${d.temp}°C</b>`))
+            .on('mousemove', e => moveTip(e))
+            .on('mouseout', () => hideTip())
+            .transition().duration(700)
+            .attr('y', d=>y(d.temp)).attr('height', d=>H-m.bottom-y(d.temp));
+
+        svg.append('g').attr('transform',`translate(0,${H-m.bottom})`).call(d3.axisBottom(x))
+            .selectAll('text').attr('transform','rotate(-40)').style('text-anchor','end').attr('dx','-0.4em').attr('dy','0.5em').style('font-size','11px');
+        svg.append('g').attr('transform',`translate(${m.left},0)`).call(d3.axisLeft(y));
+    }
+
+    // ═══════════════════════════════════════
+    //  TASK 4 — Horizontal bar (Chart.js)
+    // ═══════════════════════════════════════
+    function tempColor(v) {
+        const t = (v-16)/(29-16);
+        if (t < 0.3) {
+            const s=t/0.3;
+            return `rgb(${Math.round(66+s*(250-66))},${Math.round(135+s*(204-135))},${Math.round(245+s*(100-245))})`;
+        } else if (t < 0.65) {
+            const s=(t-0.3)/0.35;
+            return `rgb(${Math.round(250+s*(239-250))},${Math.round(204+s*(68-204))},${Math.round(100+s*(68-100))})`;
+        } else {
+            const s=(t-0.65)/0.35;
+            return `rgb(${Math.round(239+s*(180-239))},${Math.round(68+s*(0-68))},${Math.round(68+s*(0-68))})`;
+        }
+    }
+
+    function updateTask4() {
+        let lo = +document.getElementById('t4lo').value;
+        let hi = +document.getElementById('t4hi').value;
+        if (lo > hi) { hi=lo; document.getElementById('t4hi').value=lo; }
+        document.getElementById('t4loVal').textContent = lo.toFixed(1)+'°C';
+        document.getElementById('t4hiVal').textContent = hi.toFixed(1)+'°C';
+        renderTask4(lo, hi);
+    }
+
+    function renderTask4(lo, hi) {
+        if (task4ProvinceData.length === 0) return;
+        const filtered = task4ProvinceData.filter(d => d.v >= lo && d.v <= hi).slice().reverse();
+        const H = Math.max(160, filtered.length * 24 + 60);
+        const wrap = document.getElementById('task4Wrap');
+        wrap.style.height = Math.min(H, 480) + 'px';
+        const canvas = document.getElementById('chart4');
+        canvas.height = H;
+        canvas.width = wrap.clientWidth || 440;
+
+        if (chart4Instance) chart4Instance.destroy();
+        const colors = filtered.map(d => tempColor(d.v));
+        chart4Instance = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: filtered.map(d=>d.name),
+                datasets: [{ data: filtered.map(d=>d.v), backgroundColor: colors, borderColor: colors, borderWidth:0, borderRadius:3, barThickness:14 }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: false,
+                plugins: {
+                    legend: { display:false },
+                    tooltip: { callbacks: { label: ctx=>` ${ctx.parsed.x.toFixed(1)}°C` } }
+                },
+                scales: {
+                    x: { min:15, max:30, grid:{color:'#f0f0f0'}, ticks:{font:{size:10}, callback:v=>v+'°C'} },
+                    y: { grid:{display:false}, ticks:{font:{size:10}, color:'#444'} }
+                }
+            }
+        });
+    }
+
+    // ═══════════════════════════════════════
+    //  TASK 5 — Grouped bar ven biển vs nội địa
+    // ═══════════════════════════════════════
+    function renderTask5() {
+        const svg = d3.select('#chart5');
+        svg.selectAll('*').remove();
+
+        const provC = document.getElementById('task5Coastal').value;
+        const provI = document.getElementById('task5Inland').value;
+        const dataC = task5CoastalData.find(d=>d.province===provC);
+        const dataI = task5InlandData.find(d=>d.province===provI);
+        if (!dataC || !dataI) return;
+
+        const metrics = [
+            { id:'temp',     label:'Nhiệt độ (°C)' },
+            { id:'precip',   label:'Mưa (mm)' },
+            { id:'wind',     label:'Gió (km/h)' },
+            { id:'humidity', label:'Độ ẩm (%)' }
+        ];
+
+        const W=760, H=340, m={top:20, right:30, bottom:50, left:52};
+        svg.attr('width',W).attr('height',H);
+
+        const x0 = d3.scaleBand().domain(metrics.map(d=>d.label)).rangeRound([m.left, W-m.right]).paddingInner(0.22);
+        const x1 = d3.scaleBand().domain(['coastal','inland']).rangeRound([0, x0.bandwidth()]).padding(0.06);
+        const maxVal = d3.max(metrics.map(m2 => Math.max(dataC[m2.id], dataI[m2.id])));
+        const y = d3.scaleLinear().rangeRound([H-m.bottom, m.top]).domain([0, maxVal*1.15]);
+        const color = d3.scaleOrdinal().domain(['coastal','inland']).range(['#2d6a4f','#dd6b20']);
+
+        const chartData = metrics.map(m2 => ({
+            label: m2.label,
+            values: [{ key:'coastal', val:dataC[m2.id] }, { key:'inland', val:dataI[m2.id] }]
+        }));
+
+        svg.selectAll('.group').data(chartData).enter().append('g')
+            .attr('transform', d=>`translate(${x0(d.label)},0)`)
+            .selectAll('rect').data(d=>d.values).enter().append('rect')
+            .attr('x', d=>x1(d.key)).attr('width', x1.bandwidth())
+            .attr('rx', 4)
+            .attr('fill', d=>color(d.key))
+            .on('mouseover', (e,d) => showTip(e, `<b>${d.key==='coastal'?provC:provI}</b><br>Giá trị: <b>${d.val.toFixed(1)}</b>`))
+            .on('mousemove', e=>moveTip(e))
+            .on('mouseout', ()=>hideTip())
+            .attr('y', H-m.bottom).attr('height', 0)
+            .transition().duration(500)
+            .attr('y', d=>y(d.val)).attr('height', d=>H-m.bottom-y(d.val));
+
+        svg.append('g').attr('transform',`translate(0,${H-m.bottom})`).call(d3.axisBottom(x0));
+        svg.append('g').attr('transform',`translate(${m.left},0)`).call(d3.axisLeft(y));
+    }
+
+    // ═══════════════════════════════════════
+    //  TOOLTIP HELPERS
+    // ═══════════════════════════════════════
+    const tip = document.getElementById('d3tip');
+    function showTip(e, html) { tip.style.opacity='1'; tip.innerHTML=html; moveTip(e); }
+    function moveTip(e) { tip.style.left=(e.pageX+14)+'px'; tip.style.top=(e.pageY-36)+'px'; }
+    function hideTip() { tip.style.opacity='0'; }
+
+})();
+</script>
+</body>
+</html>

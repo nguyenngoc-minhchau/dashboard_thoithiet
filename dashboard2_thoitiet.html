@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard 2 | Thời tiết & Không gian</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        .section-title {
+            background: #eef5f0;
+            padding: 12px 20px;
+            border-bottom: 1px solid #c8dcc8;
+            font-weight: bold;
+            font-size: 1.05rem;
+            color: #1e4a3a;
+        }
+        .task-panel {
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+            overflow: hidden;
+            margin: 16px 20px;
+        }
+        .task-body { padding: 16px 20px; }
+        .two-col {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 16px 20px;
+        }
+        .two-col .task-panel { flex: 1; min-width: 400px; margin: 0; }
+        .chart-scroll { overflow-x: auto; }
+        .filter-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            font-size: 13px;
+        }
+        .filter-row label { color: #2d6a4f; font-weight: 600; }
+        .filter-row select { width: auto; padding: 6px 12px; border-radius: 12px; border: 1px solid #c8dbc8; font-size: 0.82rem; }
+        /* Task 6 Treemap */
+        #t6Treemap { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+        .t6-region-cell {
+            border-radius: 8px; padding: 12px; box-sizing: border-box;
+            cursor: pointer; display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            transition: filter .15s, transform .15s; min-height: 80px;
+        }
+        .t6-region-cell:hover { filter: brightness(1.1); transform: scale(1.01); }
+        .t6-region-cell .r-name { font-size: 11px; font-weight: 600; color: #fff; opacity: .9; text-align: center; margin-bottom: 4px; }
+        .t6-region-cell .r-count { font-size: 26px; font-weight: 700; color: #fff; line-height: 1; }
+        .t6-region-cell .r-unit  { font-size: 10px; color: rgba(255,255,255,.65); margin-top: 2px; }
+        .t6-region-cell .r-info  { font-size: 10px; color: rgba(255,255,255,.5); margin-top: 4px; text-align: center; }
+        #t6Provinces { display: none; }
+        .t6-prov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 8px; }
+        .t6-prov-card { border-radius: 8px; border: 1.5px solid #e5e7eb; overflow: hidden; background: #fafafa; }
+        .t6-prov-header { padding: 7px 10px; font-size: 11px; font-weight: 600; color: #fff; }
+        .t6-prov-body { padding: 8px 10px; }
+        .t6-prov-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+        .t6-prov-row .lbl { font-size: 10px; color: #888; }
+        .t6-prov-row .val { font-size: 12px; font-weight: 600; }
+        #t6BackBtn { display: none; margin-bottom: 12px; padding: 6px 14px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; cursor: pointer; color: #555; }
+        #t6BackBtn:hover { background: #f3f4f6; }
+        /* Task 7 donut */
+        #t7Container { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+        #t7DonutWrap { flex: 0 0 auto; }
+        #t7Legend { flex: 1; min-width: 160px; max-height: 400px; overflow-y: auto; padding-top: 10px; }
+        .t7-legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+        .t7-legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+        /* d3 tooltip */
+        .d3-tip {
+            position: absolute;
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 200;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+<div class="card" style="margin-top:16px;">
+
+    <div class="header">
+        <h1>🌧️ Dashboard 2: Thời tiết & Không gian</h1>
+        <p>Heatmap tần suất · Mật độ vùng · Tần suất thời tiết · BoxPlot nhiệt độ · Cột chồng vùng</p>
+    </div>
+
+    <!-- Upload -->
+    <div class="upload-area" id="uploadArea">📂 Click hoặc kéo thả file <b>df_weather_fixed_utf8_cleaned.csv</b></div>
+    <input type="file" id="fileInput" accept=".csv" style="display:none;">
+
+    <!-- Filter bar -->
+    <div id="filterSection" style="display:none;">
+        <div class="filters">
+            <div class="filter-group">
+                <label>📆 Năm</label>
+                <select id="yearFilter"><option value="all">Tất cả</option></select>
+            </div>
+            <div class="filter-group">
+                <label>📅 Tháng</label>
+                <select id="monthFilter">
+                    <option value="all">Tất cả</option>
+                    <option value="1">Tháng 1</option><option value="2">Tháng 2</option>
+                    <option value="3">Tháng 3</option><option value="4">Tháng 4</option>
+                    <option value="5">Tháng 5</option><option value="6">Tháng 6</option>
+                    <option value="7">Tháng 7</option><option value="8">Tháng 8</option>
+                    <option value="9">Tháng 9</option><option value="10">Tháng 10</option>
+                    <option value="11">Tháng 11</option><option value="12">Tháng 12</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>🔄 Reset</label>
+                <button id="resetBtn">Đặt lại</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="noDataMsg" class="no-data">⬆️ Hãy chọn file CSV để bắt đầu</div>
+    <div id="mainContent" style="display:none;">
+
+        <!-- ════ Row 1: Task 3 + Task 7 (2 cột) ════ -->
+        <div class="two-col">
+
+            <!-- Task 3: Heatmap -->
+            <div class="task-panel">
+                <div class="section-title">🔥 Task 3: Heatmap Tần suất Thời tiết theo Vùng</div>
+                <div class="task-body">
+                    <div class="filter-row">
+                        <label>Chọn Vùng:</label>
+                        <select id="t3RegionFilter"></select>
+                    </div>
+                    <div class="chart-scroll">
+                        <svg id="chart3" width="520" height="320"></svg>
+                    </div>
+                    <div class="note">💡 Hover để xem số ngày · Màu đậm hơn = tần suất cao hơn</div>
+                </div>
+            </div>
+
+            <!-- Task 7: Donut -->
+            <div class="task-panel">
+                <div class="section-title">🍩 Task 7: Tần suất thời tiết (Donut Chart)</div>
+                <div class="task-body">
+                    <div class="filter-row">
+                        <label>Chọn Khu vực:</label>
+                        <select id="t7RegionFilter"></select>
+                    </div>
+                    <div id="t7Container">
+                        <div id="t7DonutWrap"><svg id="chart7" width="300" height="300"></svg></div>
+                        <div id="t7Legend"></div>
+                    </div>
+                    <div class="note">💡 Hover vào múi bánh để xem thông tin</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════ Task 6: Treemap Mật độ vùng ════ -->
+        <div class="task-panel">
+            <div class="section-title">🗺️ Task 6: Mật độ điểm đo theo Vùng</div>
+            <div class="task-body">
+                <button id="t6BackBtn" onclick="t6ShowRegions()">← Quay lại tổng quan</button>
+                <div id="t6Treemap"></div>
+                <div id="t6Provinces"></div>
+                <div class="note">💡 Click vào vùng để xem chi tiết tỉnh/thành · Click "Quay lại" để về tổng quan</div>
+            </div>
+        </div>
+
+        <!-- ════ Task 8: BoxPlot ════ -->
+        <div class="task-panel">
+            <div class="section-title">📦 Task 8: Nhiệt độ theo Trạng thái Thời tiết (BoxPlot)</div>
+            <div class="task-body">
+                <div class="filter-row">
+                    <label>Chọn Khu vực:</label>
+                    <select id="t8RegionFilter"></select>
+                </div>
+                <div class="chart-scroll">
+                    <svg id="chart8" width="900" height="420"></svg>
+                </div>
+                <div class="note">💡 Hover vào hộp để xem Q1·Median·Q3 · Đỏ = Median · Chấm đỏ = Outlier</div>
+            </div>
+        </div>
+
+        <!-- ════ Task 9: Stacked Bar ════ -->
+        <div class="task-panel">
+            <div class="section-title">📊 Task 9: So sánh Thời tiết giữa các Vùng (Stacked Bar)</div>
+            <div class="task-body">
+                <div class="chart-scroll">
+                    <svg id="chart9" width="960" height="420"></svg>
+                </div>
+                <div class="note">💡 Hover để xem chi tiết · Click vào cột để highlight vùng đó</div>
+            </div>
+        </div>
+
+    </div><!-- end mainContent -->
+</div>
+</div>
+
+<!-- Tooltip -->
+<div class="d3-tip" id="d3tip"></div>
+
+<script src="js/common.js"></script>
+<script>
+(function(){
+    let rawData = [];
+    let t9CurrentRegion = 'Tất cả khu vực';
+
+    // ══════════════════════════════════════
+    //  UPLOAD
+    // ══════════════════════════════════════
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput  = document.getElementById('fileInput');
+    uploadArea.onclick = () => fileInput.click();
+    uploadArea.ondragover = e => { e.preventDefault(); uploadArea.style.borderColor='#40916c'; };
+    uploadArea.ondragleave = () => uploadArea.style.borderColor = '#2d6a4f';
+    uploadArea.ondrop = e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); };
+    fileInput.onchange = e => handleFile(e.target.files[0]);
+
+    function handleFile(file) {
+        const reader = new FileReader();
+        reader.onload = ev => initDashboard(ev.target.result);
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    // ══════════════════════════════════════
+    //  INIT
+    // ══════════════════════════════════════
+    function initDashboard(csvText) {
+        rawData = d3.csvParse(csvText);
+
+        // Chuẩn hóa region
+        rawData.forEach(d => {
+            if (d['location.region']) {
+                d['location.region'] = d['location.region'].trim();
+            }
+        });
+
+        // Năm
+        const years = [...new Set(rawData.map(d => { const p=parseDateToYMD(d.date); return p.year; }).filter(Boolean))].sort();
+        const yearSel = document.getElementById('yearFilter');
+        yearSel.innerHTML = '<option value="all">Tất cả</option>';
+        years.forEach(y => yearSel.innerHTML += `<option value="${y}">${y}</option>`);
+
+        // Regions
+        const allRegions = [...new Set(rawData.map(d=>d['location.region']).filter(Boolean))].sort();
+
+        // Task 3 filter
+        const t3sel = document.getElementById('t3RegionFilter');
+        t3sel.innerHTML = '<option value="Tất cả">Tất cả</option>';
+        allRegions.forEach(r => t3sel.innerHTML += `<option value="${r}">${r}</option>`);
+        t3sel.onchange = () => renderTask3(getFiltered());
+
+        // Task 7 filter
+        const t7sel = document.getElementById('t7RegionFilter');
+        t7sel.innerHTML = '<option value="Tất cả khu vực">Tất cả khu vực</option>';
+        allRegions.forEach(r => t7sel.innerHTML += `<option value="${r}">${r}</option>`);
+        t7sel.onchange = () => renderTask7(getFiltered());
+
+        // Task 8 filter
+        const t8sel = document.getElementById('t8RegionFilter');
+        t8sel.innerHTML = '<option value="Tất cả khu vực">Tất cả khu vực</option>';
+        allRegions.forEach(r => t8sel.innerHTML += `<option value="${r}">${r}</option>`);
+        t8sel.onchange = () => renderTask8(getFiltered());
+
+        // Filter events
+        document.getElementById('yearFilter').onchange = applyFilters;
+        document.getElementById('monthFilter').onchange = applyFilters;
+        document.getElementById('resetBtn').onclick = () => {
+            document.getElementById('yearFilter').value = 'all';
+            document.getElementById('monthFilter').value = 'all';
+            applyFilters();
+        };
+
+        // Show UI
+        document.getElementById('filterSection').style.display = 'block';
+        document.getElementById('mainContent').style.display = 'block';
+        document.getElementById('noDataMsg').style.display = 'none';
+        document.getElementById('uploadArea').style.display = 'none';
+
+        // Task 6 (static data based)
+        t6ShowRegions();
+
+        applyFilters();
+    }
+
+    // ══════════════════════════════════════
+    //  FILTER CHUNG
+    // ══════════════════════════════════════
+    function getFiltered() {
+        const yr = document.getElementById('yearFilter').value;
+        const mo = document.getElementById('monthFilter').value;
+        return rawData.filter(d => {
+            const p = parseDateToYMD(d.date);
+            if (yr !== 'all' && p.year != yr) return false;
+            if (mo !== 'all' && p.month != parseInt(mo)) return false;
+            return true;
+        });
+    }
+
+    function applyFilters() {
+        const filtered = getFiltered();
+        renderTask3(filtered);
+        renderTask7(filtered);
+        renderTask8(filtered);
+        renderTask9(filtered);
+    }
+
+    // ══════════════════════════════════════
+    //  TASK 3 — Heatmap
+    // ══════════════════════════════════════
+    function renderTask3(data) {
+        const svg = d3.select('#chart3');
+        svg.selectAll('*').remove();
+
+        const selectedRegion = document.getElementById('t3RegionFilter').value;
+
+        // Top 5 điều kiện thời tiết phổ biến nhất
+        const counts = d3.rollup(data, v=>v.length, d=>d['day.condition.text']);
+        const topConds = Array.from(counts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(d=>d[0]);
+
+        const filtered = data.filter(d => topConds.includes(d['day.condition.text']));
+        const grouped = d3.rollup(filtered, v=>v.length, d=>d['location.region'], d=>d['day.condition.text']);
+
+        const heatData = [];
+        for (let [region, condMap] of grouped) {
+            for (let [cond, count] of condMap) {
+                heatData.push({ region, cond, count });
+            }
+        }
+
+        let displayData = selectedRegion === 'Tất cả' ? heatData : heatData.filter(d=>d.region===selectedRegion);
+        if (displayData.length === 0) return;
+
+        const W=520, H=320, m={top:10, right:10, bottom:80, left:155};
+        svg.attr('width', W).attr('height', H);
+
+        const regions = [...new Set(displayData.map(d=>d.region))];
+        const x = d3.scaleBand().domain(regions).range([m.left, W-m.right]).padding(0.05);
+        const y = d3.scaleBand().domain(topConds).range([H-m.bottom, m.top]).padding(0.05);
+        const color = d3.scaleSequential(d3.interpolatePuBu).domain([0, d3.max(displayData, d=>d.count)]);
+
+        svg.selectAll('.hm-rect').data(displayData).enter().append('rect')
+            .attr('x', d=>x(d.region)).attr('width', x.bandwidth())
+            .attr('y', d=>y(d.cond)).attr('height', y.bandwidth())
+            .attr('rx', 3)
+            .attr('fill', '#fff')
+            .on('mouseover', (e,d) => showTip(e, `<b>${d.region}</b><br>${d.cond}<br>Số ngày: <b>${d.count}</b>`))
+            .on('mousemove', e=>moveTip(e))
+            .on('mouseout', ()=>hideTip())
+            .transition().duration(600)
+            .attr('fill', d=>color(d.count));
+
+        svg.append('g').attr('transform',`translate(0,${H-m.bottom})`)
+            .call(d3.axisBottom(x)).selectAll('text')
+            .attr('transform','rotate(-30)').style('text-anchor','end').style('font-size','10px');
+        svg.append('g').attr('transform',`translate(${m.left},0)`)
+            .call(d3.axisLeft(y)).selectAll('text').style('font-size','10px');
+    }
+
+    // ══════════════════════════════════════
+    //  TASK 7 — Donut Chart
+    // ══════════════════════════════════════
+    function renderTask7(data) {
+        const svg = d3.select('#chart7');
+        svg.selectAll('*').remove();
+        document.getElementById('t7Legend').innerHTML = '';
+
+        const selectedRegion = document.getElementById('t7RegionFilter').value;
+        let filtered = selectedRegion === 'Tất cả khu vực' ? data : data.filter(d=>d['location.region']===selectedRegion);
+
+        // Count weather days
+        const weatherDays = {};
+        filtered.forEach(d => {
+            const cond = d['day.condition.text'];
+            const date = d['date'] || Math.random().toString();
+            if (!cond) return;
+            if (!weatherDays[cond]) weatherDays[cond] = new Set();
+            weatherDays[cond].add(date);
+        });
+        const pieData = Object.entries(weatherDays)
+            .map(([condition, s]) => ({ condition, count: s.size }))
+            .sort((a,b) => b.count-a.count);
+
+        if (pieData.length === 0) return;
+
+        const W=300, H=300, cx=150, cy=150, radius=110;
+        svg.attr('width',W).attr('height',H);
+        const color = d3.scaleOrdinal(d3.schemeDark2);
+
+        const arc = d3.arc().innerRadius(radius*0.48).outerRadius(radius*0.88);
+        const pie = d3.pie().value(d=>d.count).sort(null);
+        const data_ready = pie(pieData);
+
+        const g = svg.append('g').attr('transform',`translate(${cx},${cy})`);
+        g.selectAll('path').data(data_ready).enter().append('path')
+            .attr('fill', d=>color(d.data.condition))
+            .attr('stroke','white').style('stroke-width','2px')
+            .on('mouseover', (e,d) => showTip(e, `<b>${d.data.condition}</b><br>Số ngày: <b>${d.data.count}</b>`))
+            .on('mousemove', e=>moveTip(e))
+            .on('mouseout', ()=>hideTip())
+            .transition().duration(700)
+            .attrTween('d', d => {
+                const i = d3.interpolate({startAngle:0, endAngle:0}, d);
+                return t => arc(i(t));
+            });
+
+        // Legend
+        const legend = document.getElementById('t7Legend');
+        pieData.forEach(d => {
+            const item = document.createElement('div');
+            item.className = 't7-legend-item';
+            item.innerHTML = `<div class="t7-legend-dot" style="background:${color(d.condition)}"></div><span>${d.condition} <b>(${d.count})</b></span>`;
+            legend.appendChild(item);
+        });
+    }
+
+    // ══════════════════════════════════════
+    //  TASK 6 — Treemap (dùng data tĩnh từ CSV tổng hợp)
+    // ══════════════════════════════════════
+    const T6_REGIONS = [
+        {region:"Bắc Trung Bộ và Duyên hải miền Trung",color:"#185FA5",count:14,records:5726,avgTemp:25.6,
+         provinces:[
+            {name:"Bình Thuận",avg:26.85,rec:409},{name:"Bình Định",avg:26.16,rec:409},
+            {name:"Hà Tĩnh",avg:24.83,rec:409},{name:"Khánh Hòa",avg:25.99,rec:409},
+            {name:"Nghệ An",avg:24.75,rec:409},{name:"Ninh Thuận",avg:26.59,rec:409},
+            {name:"Phú Yên",avg:26.16,rec:409},{name:"Quảng Bình",avg:25.12,rec:409},
+            {name:"Quảng Nam",avg:25.44,rec:409},{name:"Quảng Ngãi",avg:25.68,rec:409},
+            {name:"Quảng Trị",avg:25.21,rec:409},{name:"Thanh Hóa",avg:24.47,rec:409},
+            {name:"Thừa Thiên - Huế",avg:25.21,rec:409},{name:"Đà Nẵng",avg:25.44,rec:409}
+         ]},
+        {region:"Trung du và miền núi Bắc Bộ",color:"#0F6E56",count:14,records:5726,avgTemp:22.3,
+         provinces:[
+            {name:"Bắc Giang",avg:24.43,rec:409},{name:"Bắc Kạn",avg:22.11,rec:409},
+            {name:"Cao Bằng",avg:21.64,rec:409},{name:"Hà Giang",avg:16.93,rec:409},
+            {name:"Hòa Bình",avg:24.09,rec:409},{name:"Lai Châu",avg:17.45,rec:409},
+            {name:"Lào Cai",avg:22.03,rec:409},{name:"Lạng Sơn",avg:22.06,rec:409},
+            {name:"Quảng Ninh",avg:23.64,rec:409},{name:"Sơn La",avg:22.22,rec:409},
+            {name:"Thái Nguyên",avg:23.93,rec:409},{name:"Tuyên Quang",avg:24.42,rec:409},
+            {name:"Yên Bái",avg:24.42,rec:409},{name:"Điện Biên",avg:22.22,rec:409}
+         ]},
+        {region:"Tây Nguyên",color:"#D85A30",count:5,records:2045,avgTemp:22.8,
+         provinces:[
+            {name:"Gia Lai",avg:22.85,rec:409},{name:"Kon Tum",avg:22.85,rec:409},
+            {name:"Lâm Đồng",avg:19.45,rec:409},{name:"Đắk Lắk",avg:24.37,rec:409},
+            {name:"Đắk Nông",avg:24.37,rec:409}
+         ]},
+        {region:"Đông Nam Bộ",color:"#BA7517",count:6,records:2454,avgTemp:27.8,
+         provinces:[
+            {name:"Bà Rịa-Vũng Tàu",avg:27.43,rec:409},{name:"Bình Dương",avg:28.04,rec:409},
+            {name:"Bình Phước",avg:26.69,rec:409},{name:"TP. Hồ Chí Minh",avg:28.04,rec:409},
+            {name:"Tây Ninh",avg:28.43,rec:409},{name:"Đồng Nai",avg:28.04,rec:409}
+         ]},
+        {region:"Đồng Bằng Sông Cửu Long",color:"#993556",count:13,records:5317,avgTemp:27.6,
+         provinces:[
+            {name:"An Giang",avg:28.07,rec:409},{name:"Bạc Liêu",avg:27.63,rec:409},
+            {name:"Bến Tre",avg:27.31,rec:409},{name:"Cà Mau",avg:27.65,rec:409},
+            {name:"Cần Thơ",avg:27.47,rec:409},{name:"Hậu Giang",avg:27.47,rec:409},
+            {name:"Kiên Giang",avg:27.84,rec:409},{name:"Long An",avg:27.62,rec:409},
+            {name:"Sóc Trăng",avg:27.63,rec:409},{name:"Tiền Giang",avg:27.31,rec:409},
+            {name:"Trà Vinh",avg:27.38,rec:409},{name:"Vĩnh Long",avg:27.42,rec:409},
+            {name:"Đồng Tháp",avg:27.55,rec:409}
+         ]},
+        {region:"Đồng Bằng Sông Hồng",color:"#534AB7",count:11,records:4498,avgTemp:24.6,
+         provinces:[
+            {name:"Bắc Ninh",avg:24.43,rec:409},{name:"Hà Nam",avg:24.63,rec:409},
+            {name:"Hà Nội",avg:24.77,rec:409},{name:"Hưng Yên",avg:24.63,rec:409},
+            {name:"Hải Dương",avg:24.58,rec:409},{name:"Hải Phòng",avg:24.43,rec:408},
+            {name:"Nam Định",avg:24.63,rec:409},{name:"Ninh Bình",avg:24.63,rec:409},
+            {name:"Phú Thọ",avg:24.42,rec:409},{name:"Thái Bình",avg:24.66,rec:409},
+            {name:"Vĩnh Phúc",avg:24.42,rec:409}
+         ]}
+    ];
+
+    function t6TempColor(v) {
+        const t = (v-16)/13;
+        if (t < 0.3) {
+            const s=t/0.3;
+            return `rgb(${Math.round(66+s*(250-66))},${Math.round(135+s*(204-135))},${Math.round(245+s*(100-245))})`;
+        } else if (t < 0.65) {
+            const s=(t-0.3)/0.35;
+            return `rgb(${Math.round(250+s*(239-250))},${Math.round(204+s*(68-204))},${Math.round(100+s*(68-100))})`;
+        } else {
+            const s=(t-0.65)/0.35;
+            return `rgb(${Math.round(239+s*(180-239))},${Math.round(68+s*(0-68))},${Math.round(68+s*(0-68))})`;
+        }
+    }
+
+    window.t6ShowRegions = function() {
+        document.getElementById('t6BackBtn').style.display = 'none';
+        document.getElementById('t6Provinces').style.display = 'none';
+        document.getElementById('t6Treemap').style.display = 'flex';
+        const total = T6_REGIONS.reduce((s,r)=>s+r.count,0);
+        const tm = document.getElementById('t6Treemap');
+        tm.innerHTML = '';
+        T6_REGIONS.forEach(r => {
+            const pct = r.count/total;
+            const cell = document.createElement('div');
+            cell.className = 't6-region-cell';
+            cell.style.background = r.color;
+            cell.style.flexGrow = String(r.count);
+            cell.innerHTML = `
+                <div class="r-name">${r.region}</div>
+                <div class="r-count">${r.count}</div>
+                <div class="r-unit">tỉnh/thành</div>
+                <div class="r-info">${r.records.toLocaleString()} records · TB ${r.avgTemp.toFixed(1)}°C</div>
+            `;
+            cell.onclick = () => t6ShowProvinces(r);
+            tm.appendChild(cell);
+        });
+    };
+
+    function t6ShowProvinces(r) {
+        document.getElementById('t6Treemap').style.display = 'none';
+        document.getElementById('t6BackBtn').style.display = 'inline-block';
+        const pDiv = document.getElementById('t6Provinces');
+        pDiv.style.display = 'block';
+        pDiv.innerHTML = `
+            <div style="font-size:14px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${r.color}"></span>${r.region}
+            </div>
+            <div class="t6-prov-grid">
+                ${r.provinces.map(p => {
+                    const tc = t6TempColor(p.avg);
+                    return `<div class="t6-prov-card">
+                        <div class="t6-prov-header" style="background:${r.color}">${p.name}</div>
+                        <div class="t6-prov-body">
+                            <div class="t6-prov-row"><span class="lbl">Nhiệt độ TB</span><span class="val" style="color:${tc}">${p.avg.toFixed(1)}°C</span></div>
+                            <div class="t6-prov-row"><span class="lbl">Records</span><span class="val" style="color:#555">${p.rec.toLocaleString()}</span></div>
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>`;
+    }
+
+    // ══════════════════════════════════════
+    //  TASK 8 — BoxPlot
+    // ══════════════════════════════════════
+    function transformBoxData(data) {
+        const groups = d3.groups(data, d=>d['day.condition.text']);
+        return groups.map(([name, records]) => {
+            const temps = records.map(r=>parseFloat(r['day.avgtemp_c'])).filter(t=>!isNaN(t)).sort(d3.ascending);
+            if (temps.length < 3) return null;
+            const q1 = d3.quantile(temps, 0.25);
+            const q2 = d3.quantile(temps, 0.5);
+            const q3 = d3.quantile(temps, 0.75);
+            const iqr = q3-q1;
+            const r0 = Math.max(temps[0], q1-iqr*1.5);
+            const r1 = Math.min(temps[temps.length-1], q3+iqr*1.5);
+            const outliers = records.filter(v => { const t=parseFloat(v['day.avgtemp_c']); return t<r0||t>r1; });
+            return { xName: name, quartiles:[q1,q2,q3], range:[r0,r1], outliers };
+        }).filter(Boolean);
+    }
+
+    function renderTask8(data) {
+        const svg = d3.select('#chart8');
+        svg.selectAll('*').remove();
+
+        const selectedRegion = document.getElementById('t8RegionFilter').value;
+        let filtered = selectedRegion === 'Tất cả khu vực' ? data : data.filter(d=>d['location.region']===selectedRegion);
+        const boxData = transformBoxData(filtered);
+        if (boxData.length === 0) return;
+
+        const W=900, H=420, mT=30, mR=30, mB=140, mL=60;
+        svg.attr('width',W).attr('height',H);
+
+        const x = d3.scaleBand().domain(boxData.map(d=>d.xName)).rangeRound([mL, W-mR]).padding(0.4);
+        const y = d3.scaleLinear().domain([
+            d3.min(boxData, d=>d.range[0])-2,
+            d3.max(boxData, d=>d.range[1])+2
+        ]).nice().range([H-mB, mT]);
+
+        const g = svg.append('g').selectAll('g').data(boxData).join('g');
+
+        // Whisker
+        g.append('path').attr('stroke','#555').attr('stroke-width',1.5)
+            .attr('d', d=>`M${x(d.xName)+x.bandwidth()/2},${y(d.range[1])}V${y(d.range[0])}`);
+
+        // Box
+        g.append('path')
+            .attr('fill','lightskyblue').attr('stroke','#555').attr('stroke-width',1.5)
+            .attr('d', d=>`M${x(d.xName)},${y(d.quartiles[2])}H${x(d.xName)+x.bandwidth()}V${y(d.quartiles[0])}H${x(d.xName)}Z`)
+            .on('mouseover', (e,d) => showTip(e, `<b>${d.xName}</b><br>Max: ${d.range[1].toFixed(1)}°C<br>Q3: ${d.quartiles[2].toFixed(1)}°C<br>Median: ${d.quartiles[1].toFixed(1)}°C<br>Q1: ${d.quartiles[0].toFixed(1)}°C<br>Min: ${d.range[0].toFixed(1)}°C`))
+            .on('mousemove', e=>moveTip(e))
+            .on('mouseout', ()=>hideTip());
+
+        // Median
+        g.append('path').attr('stroke','crimson').attr('stroke-width',2.5)
+            .attr('d', d=>`M${x(d.xName)},${y(d.quartiles[1])}H${x(d.xName)+x.bandwidth()}`);
+
+        // Outliers
+        g.append('g').attr('fill','red').attr('fill-opacity',0.6)
+            .attr('transform', d=>`translate(${x(d.xName)+x.bandwidth()/2},0)`)
+            .selectAll('circle').data(d=>d.outliers).join('circle')
+            .attr('r',2.5).attr('cx',()=>(Math.random()-0.5)*6)
+            .attr('cy', d=>y(parseFloat(d['day.avgtemp_c'])));
+
+        svg.append('g').attr('transform',`translate(0,${H-mB})`).call(d3.axisBottom(x).tickSizeOuter(0))
+            .selectAll('text').attr('transform','rotate(-40)').style('text-anchor','end').attr('dx','-.6em').attr('dy','.15em').style('font-size','10px');
+        svg.append('g').attr('transform',`translate(${mL},0)`).call(d3.axisLeft(y).ticks(null,'s'));
+    }
+
+    // ══════════════════════════════════════
+    //  TASK 9 — Stacked Bar
+    // ══════════════════════════════════════
+    function renderTask9(data) {
+        const svg = d3.select('#chart9');
+        svg.selectAll('*').remove();
+
+        // Build stacked data
+        const trackingMap = new Map();
+        const allConditions = new Set();
+        data.forEach(d => {
+            const region = d['location.region'];
+            const condition = d['day.condition.text'];
+            const date = d['date'] || Math.random().toString();
+            if (!region || !condition) return;
+            allConditions.add(condition);
+            if (!trackingMap.has(region)) trackingMap.set(region, new Map());
+            const condMap = trackingMap.get(region);
+            if (!condMap.has(condition)) condMap.set(condition, new Set());
+            condMap.get(condition).add(date);
+        });
+
+        const chartData = [];
+        trackingMap.forEach((condMap, regionName) => {
+            const row = { region: regionName };
+            allConditions.forEach(cond => { row[cond] = condMap.has(cond) ? condMap.get(cond).size : 0; });
+            chartData.push(row);
+        });
+
+        const keys = Array.from(allConditions);
+        if (chartData.length === 0) return;
+
+        const W=960, H=420, mT=20, mR=30, mB=120, mL=70;
+        svg.attr('width',W).attr('height',H);
+
+        const regionTotals = {};
+        chartData.forEach(d => { regionTotals[d.region] = d3.sum(keys, k=>d[k]); });
+
+        const x = d3.scaleBand()
+            .domain(chartData.map(d=>d.region).sort((a,b)=>regionTotals[b]-regionTotals[a]))
+            .range([mL, W-mR]).padding(0.3);
+
+        const series = d3.stack().keys(keys)(chartData);
+
+        const y = d3.scaleLinear()
+            .domain([0, d3.max(series, d=>d3.max(d, d=>d[1]))]).nice()
+            .range([H-mB, mT]);
+
+        const color = d3.scaleOrdinal().domain(keys).range(d3.schemeDark2);
+
+        const barGroups = svg.append('g').selectAll('g').data(series).join('g').attr('fill', d=>color(d.key));
+
+        const bars = barGroups.selectAll('rect')
+            .data(d => d.map(item => { item.key=d.key; return item; })).join('rect')
+            .attr('x', d=>x(d.data.region))
+            .attr('y', H-mB).attr('height',0)
+            .attr('width', x.bandwidth())
+            .style('cursor','pointer')
+            .on('mouseover', (e,d) => showTip(e, `<b>${d.data.region}</b><br>${d.key}<br>Số ngày: <b>${d[1]-d[0]}</b>`))
+            .on('mousemove', e=>moveTip(e))
+            .on('mouseout', ()=>hideTip())
+            .on('click', function(e,d) {
+                const clicked = d.data.region;
+                t9CurrentRegion = t9CurrentRegion===clicked ? 'Tất cả khu vực' : clicked;
+                if (t9CurrentRegion !== 'Tất cả khu vực') {
+                    svg.selectAll('rect').style('opacity',0.2);
+                    svg.selectAll('rect').filter(r=>r.data.region===t9CurrentRegion).style('opacity',1);
+                } else {
+                    svg.selectAll('rect').style('opacity',1);
+                }
+            });
+
+        bars.transition().duration(700)
+            .attr('y', d=>y(d[1]))
+            .attr('height', d=>isNaN(y(d[0])-y(d[1]))?0:(y(d[0])-y(d[1])));
+
+        svg.append('g').attr('transform',`translate(0,${H-mB})`).call(d3.axisBottom(x).tickSizeOuter(0))
+            .selectAll('text').attr('transform','rotate(-25)').style('text-anchor','end').style('font-size','10px');
+        svg.append('g').attr('transform',`translate(${mL},0)`).call(d3.axisLeft(y).ticks(8,'s'));
+    }
+
+    // ══════════════════════════════════════
+    //  TOOLTIP HELPERS
+    // ══════════════════════════════════════
+    const tip = document.getElementById('d3tip');
+    function showTip(e, html) { tip.style.opacity='1'; tip.innerHTML=html; moveTip(e); }
+    function moveTip(e) { tip.style.left=(e.pageX+14)+'px'; tip.style.top=(e.pageY-40)+'px'; }
+    function hideTip() { tip.style.opacity='0'; }
+
+})();
+</script>
+</body>
+</html>
