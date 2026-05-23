@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Task 5 - Phân Tích Chuyên Sâu</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background-color: #f5f5f5; }
+        .chart-box { background-color: #fff; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .controls { display: flex; gap: 30px; margin-bottom: 20px; }
+        .grouped-bar:hover { opacity: 0.8; cursor: pointer; }
+        .grid-line { stroke: #e2e8f0; stroke-dasharray: 4,4; }
+        .axis-label { font-size: 13px; font-weight: bold; fill: #4a5568; }
+        .tooltip { position: absolute; background: #333; color: #fff; padding: 8px 12px; border-radius: 6px; pointer-events: none; font-size: 12px; opacity: 0; }
+    </style>
+</head>
+<body>
+    <div class="chart-box">
+        <h2>So sánh Ven Biển vs Nội Địa</h2>
+        <div class="controls">
+            <div><label>Ven Biển: </label><select id="coastalFilter"></select></div>
+            <div><label>Nội Địa: </label><select id="inlandFilter"></select></div>
+        </div>
+        <svg id="task5Chart" width="800" height="400"></svg>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        async function drawTask5() {
+            const rawData = await d3.csv("df_weather_fixed_utf8_cleaned.csv");
+
+            // 1. Nhóm dữ liệu theo Tỉnh và tính trung bình (Data Aggregation)
+            const provinceData = Array.from(d3.rollup(rawData,
+                v => ({
+                    terrain: v[0]['location.terrain'],
+                    temp: d3.mean(v, d => +d['day.avgtemp_c']),
+                    precip: d3.mean(v, d => +d['day.totalprecip_mm']),
+                    wind: d3.mean(v, d => +d['day.maxwind_kph']),
+                    humidity: d3.mean(v, d => +d['day.avghumidity'])
+                }),
+                d => d['location.name']
+            )).map(([province, stats]) => ({ province, ...stats }));
+
+            // 2. Tự động phân loại dựa trên dữ liệu 'location.terrain'
+            const coastal = provinceData.filter(d => d.terrain === 'ven biển').sort((a,b) => a.province.localeCompare(b.province));
+            const inland = provinceData.filter(d => d.terrain !== 'ven biển').sort((a,b) => a.province.localeCompare(b.province));
+
+            const selC = d3.select("#coastalFilter"), selI = d3.select("#inlandFilter");
+            coastal.forEach(d => selC.append("option").text(d.province));
+            inland.forEach(d => selI.append("option").text(d.province));
+
+            // 3. Setup biểu đồ
+            const svg = d3.select("#task5Chart");
+            const width = 800, height = 400, margin = {top: 20, right: 30, bottom: 40, left: 50};
+            const x0 = d3.scaleBand().rangeRound([margin.left, width - margin.right]).paddingInner(0.2);
+            const x1 = d3.scaleBand().padding(0.05);
+            const y = d3.scaleLinear().rangeRound([height - margin.bottom, margin.top]).domain([0, 100]);
+            const color = d3.scaleOrdinal().range(["#3182ce", "#dd6b20"]);
+            const tooltip = d3.select("#tooltip");
+
+            function update() {
+                const dataC = coastal.find(d => d.province === selC.property("value"));
+                const dataI = inland.find(d => d.province === selI.property("value"));
+                const metrics = [
+                    { id: "temp", label: "Nhiệt độ (°C)" },
+                    { id: "precip", label: "Mưa (mm)" },
+                    { id: "wind", label: "Gió (km/h)" },
+                    { id: "humidity", label: "Độ ẩm (%)" }
+                ];
+                const chartData = metrics.map(m => ({
+                    label: m.label,
+                    values: [{key: "coastal", val: dataC[m.id]}, {key: "inland", val: dataI[m.id]}]
+                }));
+
+                x0.domain(metrics.map(d => d.label));
+                x1.domain(["coastal", "inland"]).rangeRound([0, x0.bandwidth()]);
+
+                svg.selectAll(".group").data(chartData).join("g")
+                    .attr("class", "group")
+                    .attr("transform", d => `translate(${x0(d.label)},0)`)
+                    .selectAll("rect").data(d => d.values).join("rect")
+                    .attr("class", "grouped-bar")
+                    .attr("x", d => x1(d.key)).attr("width", x1.bandwidth())
+                    .attr("fill", d => color(d.key))
+                    .on("mouseover", (e, d) => tooltip.style("opacity", 1).html(`Giá trị: <b>${d.val.toFixed(1)}</b>`))
+                    .on("mousemove", e => tooltip.style("left", e.pageX+10+"px").style("top", e.pageY-20+"px"))
+                    .on("mouseout", () => tooltip.style("opacity", 0))
+                    .transition().duration(500)
+                    .attr("y", d => y(d.val)).attr("height", d => height - margin.bottom - y(d.val));
+            }
+
+            svg.append("g").attr("transform", `translate(0,${height - margin.bottom})`).call(d3.axisBottom(x0));
+            svg.append("g").attr("transform", `translate(${margin.left},0)`).call(d3.axisLeft(y));
+            selC.on("change", update); selI.on("change", update);
+            update();
+        }
+        drawTask5();
+    </script>
+</body>
+</html>

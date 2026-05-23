@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task 12 - Ban ngày dài có ảnh hưởng đến UV không?</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body, .card, .header, .filters, .stats-bar, .note, .tooltip-d3, button, select, input {
+            font-family: 'Cambria', 'Times New Roman', serif;
+        }
+        body {
+            background: #eef2f0;
+            margin: 0;
+            padding: 30px 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card {
+            background: white;
+            border-radius: 28px;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e4a3a, #2d6a4f);
+            color: white;
+            padding: 20px 28px;
+        }
+        .header h1 { margin: 0; font-size: 1.5rem; }
+        .header p { margin: 8px 0 0; opacity: 0.85; font-size: 0.85rem; }
+        .upload-area {
+            border: 2px dashed #2d6a4f;
+            border-radius: 20px;
+            padding: 24px;
+            margin: 20px 24px;
+            text-align: center;
+            cursor: pointer;
+            background: #fafdfa;
+        }
+        .upload-area:hover { background: #f0f7f0; border-color: #40916c; }
+        .filters {
+            background: #f8faf5;
+            padding: 16px 24px;
+            border-top: 1px solid #dde8e0;
+            border-bottom: 1px solid #dde8e0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-end;
+        }
+        .filter-group { flex: 1; min-width: 120px; }
+        .filter-group label {
+            display: block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #2d6a4f;
+            margin-bottom: 4px;
+        }
+        select, button, input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 14px;
+            border: 1px solid #c8dbc8;
+            background: white;
+            font-size: 0.8rem;
+        }
+        button {
+            background: #2d6a4f;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button:hover { background: #40916c; }
+        .stats-bar {
+            display: flex;
+            gap: 16px;
+            padding: 12px 24px;
+            background: #f0f6f0;
+            flex-wrap: wrap;
+        }
+        .stat {
+            background: white;
+            padding: 6px 14px;
+            border-radius: 40px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            min-width: 110px;
+        }
+        .stat-label { font-size: 0.65rem; font-weight: 600; color: #2d6a4f; }
+        .stat-value { font-size: 1rem; font-weight: 700; font-family: monospace; color: #1e4a3a; }
+        .group-stats {
+            display: flex;
+            gap: 16px;
+            padding: 12px 24px;
+            background: #e8f0e8;
+            flex-wrap: wrap;
+            border-bottom: 1px solid #c8dcc8;
+        }
+        .group-stat {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            border-radius: 16px;
+            min-width: 110px;
+        }
+        .group-stat span { font-size: 0.7rem; font-weight: bold; }
+        .group-stat .avg { font-size: 1rem; font-weight: bold; font-family: monospace; }
+        .red-bg { background: #ffe0e0; color: #c0392b; }
+        .green-bg { background: #e0ffe0; color: #2d6a4f; }
+        .blue-bg { background: #e0e8ff; color: #1e4a8a; }
+        .chart-container { padding: 20px 24px; background: white; position: relative; overflow-x: auto; }
+        svg { display: block; margin: 0 auto; background: white; border-radius: 16px; border: 1px solid #e2ece2; }
+        .tooltip-d3 {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.85);
+            color: #f0f0f0;
+            padding: 8px 14px;
+            border-radius: 14px;
+            font-size: 11px;
+            font-family: monospace;
+            pointer-events: none;
+            z-index: 100;
+            line-height: 1.5;
+            white-space: nowrap;
+        }
+        .note {
+            padding: 12px 24px 20px;
+            font-size: 11px;
+            color: #5a7a6a;
+            text-align: center;
+            border-top: 1px solid #e0ece0;
+        }
+        .no-data { text-align: center; padding: 60px; color: #6a8e7a; font-size: 14px; }
+        .range-inputs { display: flex; gap: 6px; align-items: center; }
+        .range-inputs input { width: 100%; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <div class="header">
+            <h1>Task 12: Ban ngày dài có ảnh hưởng đến UV không?</h1>
+            <p>Lọc theo năm, tháng, ngày cụ thể, độ dài của ngày | Màu theo nhóm ngày ngắn &lt;11h / ngày trung bình 11-13h / ngày dài &gt;13h</p>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            📂 Click hoặc kéo thả file CSV
+        </div>
+        <input type="file" id="fileInput" accept=".csv" style="display: none;">
+
+        <div id="filterSection" style="display: none;">
+            <div class="filters">
+                <div class="filter-group">
+                    <label>Năm</label>
+                    <select id="yearFilter"><option value="all">Tất cả</option></select>
+                </div>
+                <div class="filter-group">
+                    <label>Tháng</label>
+                    <select id="monthFilter">
+                        <option value="all">Tất cả</option>
+                        <option value="1">Tháng 1</option><option value="2">Tháng 2</option>
+                        <option value="3">Tháng 3</option><option value="4">Tháng 4</option>
+                        <option value="5">Tháng 5</option><option value="6">Tháng 6</option>
+                        <option value="7">Tháng 7</option><option value="8">Tháng 8</option>
+                        <option value="9">Tháng 9</option><option value="10">Tháng 10</option>
+                        <option value="11">Tháng 11</option><option value="12">Tháng 12</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Ngày</label>
+                    <select id="dayFilter">
+                        <option value="all">Tất cả</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Daylength (giờ)</label>
+                    <div class="range-inputs">
+                        <input type="range" id="dlMin" min="8" max="15" step="0.1" value="8">
+                        <input type="range" id="dlMax" min="8" max="15" step="0.1" value="15">
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                        <span id="minVal">8.0</span> → <span id="maxVal">15.0</span> giờ
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>&nbsp;</label>
+                    <button id="resetBtn">Đặt lại</button>
+                </div>
+            </div>
+            
+            <div class="group-stats" id="groupStats">
+                <div class="group-stat red-bg"><span>Ngày ngắn (&lt;11h)</span><br><span class="avg" id="shortAvg">--</span><br><span id="shortCount">0 điểm</span></div>
+                <div class="group-stat green-bg"><span>Ngày trung bình (11–13h)</span><br><span class="avg" id="midAvg">--</span><br><span id="midCount">0 điểm</span></div>
+                <div class="group-stat blue-bg"><span>Ngày dài (&gt;13h)</span><br><span class="avg" id="longAvg">--</span><br><span id="longCount">0 điểm</span></div>
+            </div>
+            
+            <div class="stats-bar">
+                <div class="stat"><span class="stat-label">Hệ số r</span><div class="stat-value" id="rVal">--</div></div>
+                <div class="stat"><span class="stat-label">Độ mạnh (Field, 2009)</span><div class="stat-value" id="strengthVal">--</div></div>
+                <div class="stat"><span class="stat-label">Số bản ghi thời tiết đang hiển thị</span><div class="stat-value" id="countVal">0</div></div>
+                <div class="stat"><span class="stat-label">UV cao nhất</span><div class="stat-value" id="maxUvVal">--</div></div>
+                <div class="stat"><span class="stat-label">Độ dài của ngày tại UV cao nhất</span><div class="stat-value" id="maxUvDl">--</div></div>
+            </div>
+        </div>
+
+        <div class="chart-container" id="chartContainer" style="position: relative;">
+            <div id="noDataMsg" class="no-data">Hãy chọn file CSV</div>
+            <svg id="scatterSvg" width="800" height="500" style="display: none;"></svg>
+        </div>
+        <div class="note">
+            Lia chuột vào điểm để xem chi tiết<br>
+            Chia ra 3 nhóm Ngày ngắn (&lt;11h) |Ngày TB (11–13h) |Ngày dài (&gt;13h)<br>
+            Đường đỏ là đường hồi quy |Chọn năm/tháng/ngày tự động lọc
+        </div>
+    </div>
+</div>
+
+<script>
+    const tooltip = d3.select("body").append("div").attr("class", "tooltip-d3").style("opacity", 0);
+    let fullData = [];
+    let svg, g, xScale, yScale, width, height, margin, innerW, innerH;
+
+    // Hàm tính số ngày trong tháng
+    function getDaysInMonth(month, year) {
+        if (month === 'all' || !year) return 31;
+        const m = parseInt(month);
+        if (m === 2) {
+            const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+            return isLeap ? 29 : 28;
+        }
+        if ([4, 6, 9, 11].includes(m)) return 30;
+        return 31;
+    }
+
+    // Cập nhật select ngày
+    function updateDayOptions() {
+        const yearVal = document.getElementById('yearFilter').value;
+        const monthVal = document.getElementById('monthFilter').value;
+        const daySelect = document.getElementById('dayFilter');
+        
+        const previousDay = daySelect.value;
+        
+        while (daySelect.options.length > 1) {
+            daySelect.remove(1);
+        }
+        
+        if (yearVal === 'all' || monthVal === 'all') {
+            return;
+        }
+        
+        const daysInMonth = getDaysInMonth(monthVal, parseInt(yearVal));
+        
+        for (let d = 1; d <= daysInMonth; d++) {
+            const option = document.createElement('option');
+            option.value = d;
+            option.textContent = `Ngày ${d}`;
+            daySelect.appendChild(option);
+        }
+        
+        if (previousDay !== 'all' && parseInt(previousDay) <= daysInMonth) {
+            daySelect.value = previousDay;
+        } else {
+            daySelect.value = 'all';
+        }
+    }
+
+    function initSVG() {
+        svg = d3.select("#scatterSvg");
+        width = 800; height = 500;
+        svg.attr("width", width).attr("height", height);
+        margin = { top: 45, right: 35, bottom: 55, left: 65 };
+        innerW = width - margin.left - margin.right;
+        innerH = height - margin.top - margin.bottom;
+        svg.selectAll("*").remove();
+        g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+        xScale = d3.scaleLinear().range([0, innerW]);
+        yScale = d3.scaleLinear().range([innerH, 0]);
+        g.append("g").attr("class", "x-axis").attr("transform", `translate(0,${innerH})`);
+        g.append("g").attr("class", "y-axis");
+        g.append("text").attr("class", "x-label").attr("x", innerW/2).attr("y", innerH+40).attr("text-anchor", "middle").style("fill","#2d6a4f").style("font-weight","bold").text("Độ dài ban ngày (giờ)");
+        g.append("text").attr("class", "y-label").attr("x", -innerH/2).attr("y", -40).attr("text-anchor", "middle").attr("transform","rotate(-90)").style("fill","#2d6a4f").style("font-weight","bold").text("Chỉ số UV");
+        g.append("line").attr("class", "reg-line").attr("stroke", "#e63946").attr("stroke-width", 2.5).attr("stroke-dasharray", "6,6");
+    }
+
+    function timeToHours(t) {
+        if (!t) return NaN;
+        let s = String(t).trim();
+        let match = s.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (match) {
+            let h = parseInt(match[1]), m = parseInt(match[2]), ap = match[3].toUpperCase();
+            if (ap === 'PM' && h !== 12) h += 12;
+            if (ap === 'AM' && h === 12) h = 0;
+            return h + m/60;
+        }
+        return NaN;
+    }
+
+    function parseDateToYMD(dateStr) {
+        if (!dateStr) return { year: null, month: null, day: null };
+        let parts = String(dateStr).split('/');
+        if (parts.length === 3) {
+            let month = parseInt(parts[0]);
+            let day = parseInt(parts[1]);
+            let year = parseInt(parts[2]);
+            if (!isNaN(year) && !isNaN(month) && !isNaN(day)) return { year, month, day };
+        }
+        return { year: null, month: null, day: null };
+    }
+
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    uploadArea.onclick = () => fileInput.click();
+    uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.style.borderColor = '#40916c'; };
+    uploadArea.ondragleave = () => uploadArea.style.borderColor = '#2d6a4f';
+    uploadArea.ondrop = (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); };
+    fileInput.onchange = (e) => handleFile(e.target.files[0]);
+
+    function handleFile(file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => parseCSV(ev.target.result);
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    function parseCSV(csvText) {
+        const lines = csvText.split(/\r?\n/);
+        if (lines.length < 2) return;
+        const headers = lines[0].split(',').map(h => h.replace(/["']/g, '').trim());
+        const idxUV = headers.indexOf('day.uv');
+        const idxSunrise = headers.indexOf('astro.sunrise');
+        const idxSunset = headers.indexOf('astro.sunset');
+        const idxLoc = headers.indexOf('location.name');
+        const idxDate = headers.indexOf('date');
+
+        if (idxUV === -1 || idxSunrise === -1 || idxSunset === -1) {
+            alert("Không tìm thấy cột day.uv / astro.sunrise / astro.sunset");
+            return;
+        }
+
+        fullData = [];
+        for (let i = 1; i < lines.length; i++) {
+            let row = lines[i].trim();
+            if (!row) continue;
+            let cols = row.split(',');
+            let uv = parseFloat(cols[idxUV]);
+            let sunrise = timeToHours(cols[idxSunrise]);
+            let sunset = timeToHours(cols[idxSunset]);
+            if (isNaN(uv) || isNaN(sunrise) || isNaN(sunset) || sunset <= sunrise) continue;
+            let daylength = sunset - sunrise;
+            let location = idxLoc !== -1 ? cols[idxLoc] : "N/A";
+            let dateRaw = idxDate !== -1 ? cols[idxDate] : "";
+            let { year, month, day } = parseDateToYMD(dateRaw);
+            if (year === null || month === null || day === null) continue;
+            fullData.push({ uv, daylength, year, month, day, date: dateRaw, location });
+        }
+
+        if (fullData.length === 0) { alert("Không có dữ liệu hợp lệ"); return; }
+
+        document.getElementById('filterSection').style.display = 'block';
+        document.getElementById('noDataMsg').style.display = 'none';
+        document.getElementById('scatterSvg').style.display = 'block';
+        initSVG();
+
+        let years = [...new Set(fullData.map(d => d.year))].sort();
+        let yearSelect = document.getElementById('yearFilter');
+        yearSelect.innerHTML = '<option value="all">Tất cả</option>';
+        years.forEach(y => { yearSelect.innerHTML += `<option value="${y}">${y}</option>`; });
+
+        const dlMin = document.getElementById('dlMin');
+        const dlMax = document.getElementById('dlMax');
+        dlMin.oninput = () => { if (parseFloat(dlMin.value) > parseFloat(dlMax.value)) dlMax.value = dlMin.value; updateSliderLabels(); applyFilters(); };
+        dlMax.oninput = () => { if (parseFloat(dlMax.value) < parseFloat(dlMin.value)) dlMin.value = dlMax.value; updateSliderLabels(); applyFilters(); };
+        function updateSliderLabels() {
+            document.getElementById('minVal').innerText = parseFloat(dlMin.value).toFixed(1);
+            document.getElementById('maxVal').innerText = parseFloat(dlMax.value).toFixed(1);
+        }
+        updateSliderLabels();
+
+        document.getElementById('yearFilter').onchange = () => {
+            updateDayOptions();
+            applyFilters();
+        };
+        document.getElementById('monthFilter').onchange = () => {
+            updateDayOptions();
+            applyFilters();
+        };
+        document.getElementById('dayFilter').onchange = () => applyFilters();
+        document.getElementById('resetBtn').onclick = () => {
+            document.getElementById('yearFilter').value = 'all';
+            document.getElementById('monthFilter').value = 'all';
+            document.getElementById('dayFilter').innerHTML = '<option value="all">Tất cả</option>';
+            dlMin.value = '8'; dlMax.value = '15';
+            updateSliderLabels();
+            applyFilters();
+        };
+        
+        updateDayOptions();
+        applyFilters();
+    }
+
+    function getGroupColor(daylength) {
+        if (daylength < 11) return "#e63946";
+        if (daylength <= 13) return "#2e8b57";
+        return "#1e4a8a";
+    }
+
+    function getStrengthText(r) {
+        let absR = Math.abs(r);
+        if (absR < 0.1) return 'rất yếu';
+        if (absR < 0.3) return 'yếu';
+        if (absR < 0.5) return 'trung bình';
+        return 'mạnh';
+    }
+
+    function pearsonCorr(xArr, yArr) {
+        let n = xArr.length;
+        let sx=0,sy=0,sxy=0,sx2=0,sy2=0;
+        for(let i=0;i<n;i++){ sx+=xArr[i]; sy+=yArr[i]; sxy+=xArr[i]*yArr[i]; sx2+=xArr[i]*xArr[i]; sy2+=yArr[i]*yArr[i]; }
+        let num = n*sxy - sx*sy;
+        let den = Math.sqrt((n*sx2 - sx*sx)*(n*sy2 - sy*sy));
+        return den===0?0:num/den;
+    }
+
+    function linearReg(xArr, yArr) {
+        let n = xArr.length;
+        let sx=0,sy=0,sxy=0,sx2=0;
+        for(let i=0;i<n;i++){ sx+=xArr[i]; sy+=yArr[i]; sxy+=xArr[i]*yArr[i]; sx2+=xArr[i]*xArr[i]; }
+        let den = n*sx2 - sx*sx;
+        if(den===0) return {slope:0,intercept:0};
+        let slope = (n*sxy - sx*sy)/den;
+        let intercept = (sy - slope*sx)/n;
+        return {slope,intercept};
+    }
+
+    function applyFilters() {
+        let yearVal = document.getElementById('yearFilter').value;
+        let monthVal = document.getElementById('monthFilter').value;
+        let dayVal = document.getElementById('dayFilter').value;
+        let dlMin = parseFloat(document.getElementById('dlMin').value);
+        let dlMax = parseFloat(document.getElementById('dlMax').value);
+
+        let filtered = fullData.filter(d => {
+            if (yearVal !== 'all' && d.year != yearVal) return false;
+            if (monthVal !== 'all' && d.month != parseInt(monthVal)) return false;
+            if (dayVal !== 'all' && d.day != parseInt(dayVal)) return false;
+            if (d.daylength < dlMin || d.daylength > dlMax) return false;
+            return true;
+        });
+
+        document.getElementById('countVal').innerText = filtered.length;
+
+        if (filtered.length === 0) {
+            g.selectAll("circle").remove();
+            g.select(".reg-line").attr("x1", 0).attr("y1", 0).attr("x2", 0).attr("y2", 0);
+            document.getElementById('rVal').innerText = '--';
+            document.getElementById('strengthVal').innerText = '--';
+            document.getElementById('shortAvg').innerText = '--';
+            document.getElementById('midAvg').innerText = '--';
+            document.getElementById('longAvg').innerText = '--';
+            document.getElementById('shortCount').innerHTML = '0 điểm';
+            document.getElementById('midCount').innerHTML = '0 điểm';
+            document.getElementById('longCount').innerHTML = '0 điểm';
+            document.getElementById('maxUvVal').innerText = '--';
+            document.getElementById('maxUvDl').innerText = '--';
+            return;
+        }
+
+        let short = filtered.filter(d => d.daylength < 11).map(d => d.uv);
+        let mid = filtered.filter(d => d.daylength >= 11 && d.daylength <= 13).map(d => d.uv);
+        let long = filtered.filter(d => d.daylength > 13).map(d => d.uv);
+        
+        let shortAvg = short.length ? (short.reduce((a,b)=>a+b,0)/short.length).toFixed(2) : '--';
+        let midAvg = mid.length ? (mid.reduce((a,b)=>a+b,0)/mid.length).toFixed(2) : '--';
+        let longAvg = long.length ? (long.reduce((a,b)=>a+b,0)/long.length).toFixed(2) : '--';
+        
+        document.getElementById('shortAvg').innerHTML = shortAvg;
+        document.getElementById('midAvg').innerHTML = midAvg;
+        document.getElementById('longAvg').innerHTML = longAvg;
+        document.getElementById('shortCount').innerHTML = short.length + ' điểm';
+        document.getElementById('midCount').innerHTML = mid.length + ' điểm';
+        document.getElementById('longCount').innerHTML = long.length + ' điểm';
+
+        let maxUvPoint = filtered.reduce((max, d) => d.uv > max.uv ? d : max, filtered[0]);
+        document.getElementById('maxUvVal').innerText = maxUvPoint.uv.toFixed(2);
+        document.getElementById('maxUvDl').innerText = maxUvPoint.daylength.toFixed(2) + ' giờ';
+
+        let xVals = filtered.map(d => d.daylength);
+        let yVals = filtered.map(d => d.uv);
+        let r = pearsonCorr(xVals, yVals);
+        let strength = getStrengthText(r);
+        document.getElementById('rVal').innerText = r.toFixed(4);
+        document.getElementById('strengthVal').innerText = strength;
+
+        let xMin = d3.min(xVals), xMax = d3.max(xVals);
+        let yMin = d3.min(yVals), yMax = d3.max(yVals);
+        if (xMin === xMax) { xMin -= 0.5; xMax += 0.5; }
+        if (yMin === yMax) { yMin -= 0.5; yMax += 0.5; }
+        
+        xScale.domain([xMin, xMax]).nice();
+        yScale.domain([0, Math.max(12, yMax)]).nice();
+        
+        g.select(".x-axis").transition().duration(300).call(d3.axisBottom(xScale).ticks(6));
+        g.select(".y-axis").transition().duration(300).call(d3.axisLeft(yScale).ticks(6));
+        
+        let circles = g.selectAll("circle").data(filtered, d => `${d.location}-${d.date}`);
+        circles.exit().remove();
+        circles.enter().append("circle")
+            .attr("r", 4.5)
+            .attr("stroke", "#333")
+            .attr("stroke-width", 0.3)
+            .merge(circles)
+            .transition().duration(200)
+            .attr("cx", d => xScale(d.daylength))
+            .attr("cy", d => yScale(d.uv))
+            .attr("fill", d => getGroupColor(d.daylength));
+        
+        g.selectAll("circle").on("mouseover", function(event, d) {
+            tooltip.style("opacity", 1)
+                .html(`${d.date}<br>${d.location}<br>UV: ${d.uv.toFixed(2)}<br>Daylength: ${d.daylength.toFixed(2)} giờ`)
+                .style("left", (event.pageX + 15) + "px")
+                .style("top", (event.pageY - 50) + "px");
+        }).on("mousemove", function(event) {
+            tooltip.style("left", (event.pageX + 15) + "px").style("top", (event.pageY - 50) + "px");
+        }).on("mouseout", function() { tooltip.style("opacity", 0); });
+        
+        let reg = linearReg(xVals, yVals);
+        let x1 = xScale.domain()[0], x2 = xScale.domain()[1];
+        let y1 = reg.slope * x1 + reg.intercept;
+        let y2 = reg.slope * x2 + reg.intercept;
+        g.select(".reg-line").attr("x1", xScale(x1)).attr("y1", yScale(y1)).attr("x2", xScale(x2)).attr("y2", yScale(y2));
+        
+        g.select(".r-annotation").remove();
+        g.append("text").attr("class", "r-annotation").attr("x", innerW - 10).attr("y", -12)
+            .attr("text-anchor", "end").style("font-size", "11px").style("font-family", "monospace")
+            .style("fill", "#2d6a4f").text(`r = ${r.toFixed(3)} (${strength})`);
+    }
+</script>
+</body>
+</html>

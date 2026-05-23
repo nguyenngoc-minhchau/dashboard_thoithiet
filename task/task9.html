@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <title> Task 09 With Stacked Bar </title>
+        <style>
+            body {
+                 font-family: 'Times New Roman', Times, serif;
+                padding: 20px;
+                background-color: #f5f5f5;
+            }
+
+            svg {
+                background-color: cornsilk;
+                border: 1px solid rgb(115, 215, 185);
+                display: block;
+                margin-top: 10px;
+            }
+
+            .tooltip {
+                position: absolute;
+                background: white;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                padding: 8px 10px;
+                opacity: 0;
+                pointer-events: none;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                font-size: 14px;
+                z-index: 999;
+            }
+
+            .chart-box {
+                background-color: #cff2f0;
+                border: 1px solid #e0e0e0;
+                border-radius: 10px;
+                padding: 20px;
+                display: inline-block;
+            }
+
+            .filter-container {
+                margin-bottom: 15px;
+                font-size: 16px;
+            }
+        
+            .filter-container select {
+                padding: 6px 10px;
+                font-family: 'Times New Roman', Times, serif;
+                font-size: 15px;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="chart-box">
+            <h2>Task 9 - Comparisons between the weather conditions and regions </h2>
+            <svg id="stackedBarChart" width="1000"></svg>      
+        </div>
+
+        <script>
+            // Biến toàn cục bổ trợ khi chạy độc lập file này
+            let currentRegion = "Tất cả khu vực";
+
+            // Hàm để đọc dữ liệu data
+            async function loadDataForStackedBar(filepath) {
+                const data = await d3.csv(filepath);
+                return data;
+            }
+
+            // Hàm để biến đổi và đếm ngày chuẩn
+            function transformStackedBarData (data) {
+                const trackingMap = new Map();
+                const allConditions = new Set(); 
+
+                data.forEach(d => {
+                    const region = d["location.region"];
+                    const condition = d["day.condition.text"];
+                    const date = d["date"] || d["day"] || d["time"] || Math.random().toString();
+
+                    if (!region || !condition) return; 
+                    allConditions.add(condition);
+
+                    if (!trackingMap.has(region)) {
+                        trackingMap.set(region, new Map());
+                    }
+            
+                    const conditionMap = trackingMap.get(region);
+                    if (!conditionMap.has(condition)) {
+                        conditionMap.set(condition, new Set());
+                    }
+                    conditionMap.get(condition).add(date);
+                });
+
+                const cleanDataForD3 = [];
+                trackingMap.forEach((conditionMap, regionName) => {
+                    const row = { region: regionName };
+                    allConditions.forEach(cond => {
+                        row[cond] = conditionMap.has(cond) ? conditionMap.get(cond).size : 0;
+                    });
+                    cleanDataForD3.push(row);
+                });
+
+                return {
+                    chartData: cleanDataForD3,
+                    keys: Array.from(allConditions)
+                };
+            }
+
+            // Hàm để vẽ đồ thị cột chồng (Đã sửa lỗi gán sự kiện tương tác chuẩn chỉ)
+            function drawStackedBarChart(outputData, selectedRegion) {
+                const data = outputData.chartData;
+                const keys = outputData.keys;
+
+                const svg = d3.select("#stackedBarChart");
+
+                // Xóa lỗi trùng lặp tooltip khi render lại
+                d3.selectAll(".task9-tooltip").remove();
+                const tooltip = d3.select("body").append("div").attr("class", "tooltip task9-tooltip");
+
+                const width = 1000;
+                const height = 500;
+                const marginTop = 30;
+                const marginRight = 40;
+                const marginBottom = 120; // Tăng thêm tí nữa cho các nhãn chữ dài không bị lấp mất
+                const marginLeft = 90;
+
+                svg.attr("width", width).attr("height", height);
+                svg.selectAll("*").remove(); 
+
+                const series = d3.stack().keys(keys)(data);
+
+                // Tính tổng số ngày của từng vùng để sắp xếp cột từ cao đến thấp
+                const regionTotals = {};
+                data.forEach(d => {
+                    regionTotals[d.region] = d3.sum(keys, k => d[k]);
+                });
+
+                // Thiết lập thang đo
+                const x = d3.scaleBand()
+                    .domain(data.map(d => d.region).sort((a, b) => regionTotals[b] - regionTotals[a]))
+                    .range([marginLeft, width - marginRight])
+                    .padding(0.3);
+              
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(series, d => d3.max(d, d => d[1]))])
+                    .nice()
+                    .range([height - marginBottom, marginTop]);
+
+                const color = d3.scaleOrdinal()
+                    .domain(keys)
+                    .range(d3.schemeDark2);
+
+                // Gán nhóm cột
+                const barGroups = svg.append("g")
+                    .selectAll("g")
+                    .data(series)
+                    .join("g")
+                    .attr("fill", d => color(d.key));
+
+                // Vẽ TỪNG THANH RECT và gán sự kiện trực tiếp vào rect (Hết lỗi dính chùm)
+                const bars = barGroups.selectAll("rect")
+                    .data(d => d.map(item => { item.key = d.key; return item; }))
+                    .join("rect")
+                    .attr("class", "task9-bar") 
+                    .attr("x", d => x(d.data.region))
+                    .attr("y", d => height - marginBottom) // Đáy khởi tạo hiệu ứng
+                    .attr("height", 0) // Chiều cao ban đầu bằng 0 để trồi lên
+                    .attr("width", x.bandwidth())
+                    .style("cursor", "pointer")
+                    // --- ĐƯA SỰ KIỆN VÀO ĐÚNG RECT ---
+                    .on("mouseover", function(event, d) {
+                        const regionName = d.data.region;
+                        const weatherCondition = d.key;
+                        const daysCount = d[1] - d[0]; 
+                        
+                        tooltip.style("opacity", 1)
+                               .html(`<strong>Vùng:</strong> ${regionName}<br/>
+                                      <strong>Thời tiết:</strong> ${weatherCondition}<br/>
+                                      <strong>Số ngày:</strong> ${daysCount} ngày`);
+                        
+                        d3.select(this).style("stroke", "#000").style("stroke-width", "1.5px"); 
+                    })
+                    .on("mousemove", function(event) {   
+                        tooltip.style("left", (event.pageX + 15) + "px")
+                               .style("top", (event.pageY + 15) + "px");         
+                    })
+                    .on("mouseleave", function() {
+                        tooltip.style("opacity", 0);
+                        d3.select(this).style("stroke", "none"); 
+                    })
+                    .on("click", function(event, d) {
+                        const clickedRegion = d.data.region;
+        
+                        if (currentRegion === clickedRegion) {
+                            currentRegion = "Tất cả khu vực";
+                        } else {
+                            currentRegion = clickedRegion;
+                        }
+        
+                        // Kiểm tra nếu có hàm updateDashboard của hệ thống lớn thì gọi, không thì tự re-render chính nó
+                        if (typeof updateDashboard === "function") {
+                            updateDashboard(); 
+                        } else {
+                            drawStackedBarChart(outputData, currentRegion);
+                        }
+                    });
+
+                // Thêm hiệu ứng Transition trồi lên siêu xịn mịn
+                bars.transition().duration(800)
+                    .attr("y", d => y(d[1]))
+                    .attr("height", d => isNaN(y(d[0]) - y(d[1])) ? 0 : (y(d[0]) - y(d[1])));
+
+                // Xử lý Highlight Opacity khi có vùng được click chọn
+                if (selectedRegion && selectedRegion !== "Tất cả khu vực") {
+                    svg.selectAll(".task9-bar").style("opacity", 0.25);
+                    svg.selectAll(".task9-bar").filter(r => r.data.region === selectedRegion).style("opacity", 1);
+                } else {
+                    svg.selectAll(".task9-bar").style("opacity", 1);
+                }
+
+                // Vẽ các trục tọa độ
+                const xAxisG = svg.append("g")
+                    .attr("transform", `translate(0, ${height - marginBottom})`)
+                    .call(d3.axisBottom(x).tickSizeOuter(0));
+                
+                xAxisG.selectAll("text")
+                    .attr("transform", "rotate(-25)") // Tăng góc nghiêng tí cho chữ đỡ đè nhau
+                    .style("text-anchor", "end")
+                    .style("font-size", "11px")
+                    .style("font-family", "'Times New Roman', Times, serif");
+
+                svg.append("g")
+                    .attr("transform", `translate(${marginLeft}, 0)`)
+                    .call(d3.axisLeft(y).ticks(10, "s"))
+                    .style("font-size", "12px");
+            }
+
+            // Hàm khởi chạy chính
+            async function main() {
+                try {
+                    const rawdata = await loadDataForStackedBar("df_weather_fixed_utf8_cleaned.csv");
+
+                    // Xử lý chuẩn hóa dữ liệu vùng miền
+                    rawdata.forEach(d => {
+                        if (d["location.region"]) {
+                            d["location.region"] = d["location.region"].trim();
+                            if (d["location.region"].startsWith("Tr") && d["location.region"].includes("ng du và miền núi Bắc Bộ")) {
+                                d["location.region"] = "Trung du và miền núi Bắc Bộ";
+                            }
+                        }
+                    });
+
+                    const data = transformStackedBarData(rawdata);
+
+                    // Vẽ biểu đồ với trạng thái ban đầu mặc định
+                    drawStackedBarChart(data, currentRegion);
+                } catch (error) {
+                    console.error("Lỗi nạp file dữ liệu CSV: ", error);
+                }
+            }
+            
+            main();            
+        </script>
+    </body>
+</html>

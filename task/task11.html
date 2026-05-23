@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Task 11: Độ Dài Ban Ngày</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f7fb;
+            color: #222;
+        }
+
+        .chart-box {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
+            max-width: 900px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 25px;
+            color: #0f172a;
+            text-align: center;
+        }
+
+        /* Tùy chỉnh lưới và trục tọa độ của D3 */
+        .grid line { stroke: #e5e7eb; }
+        .grid path { stroke: none; }
+        .axis text { font-size: 11px; fill: #555; }
+
+		/* Tooltip */
+        .d3-tooltip {
+            position: absolute;
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 100;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            line-height: 1.5;
+        }
+        .tooltip-date {
+            font-weight: bold;
+            color: #94a3b8;
+            margin-bottom: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 2px;
+        }
+        
+        /* Chấm tròn xuất hiện khi hover */
+        .hover-circle {
+            pointer-events: none; /* Tránh cản trở sự kiện chuột của overlay */
+            transition: opacity 0.1s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="chart-box">
+        <div class="chart-title">Task 11: Mô Hình Phân Bố Độ Dài Ban Ngày Trung Bình Toàn Quốc</div>
+        <svg id="daylightChart" width="840" height="420"></svg>
+        <div id="tooltip" class="d3-tooltip"></div>
+    </div>
+
+    <script>
+        // 1. CẤU HÌNH KÍCH THƯỚC KHUNG VẼ
+        const svg = d3.select("#daylightChart");
+        const width = +svg.attr("width");
+        const height = +svg.attr("height");
+        const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+
+        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const parseDate = d3.timeParse("%m/%d/%Y");
+        const formatDate = d3.timeFormat("%d/%m/%Y");
+
+        // Hàm quy đổi AM/PM sang số phút để làm phép trừ
+        function timeToMinutes(timeStr) {
+            if (!timeStr) return 0;
+            const [time, modifier] = timeStr.split(' ');
+            let [hours, minutes] = time.split(':').map(Number);
+            if (hours === 12) hours = modifier === 'AM' ? 0 : 12;
+            else if (modifier === 'PM') hours += 12;
+            return hours * 60 + minutes;
+        }
+
+        // 2. TẢI VÀ XỬ LÝ DỮ LIỆU
+        d3.csv("df_weather_fixed_utf8_cleaned.csv").then(data => {
+            
+            // Tính toán cột Độ dài ngày (giờ)
+            let cleanedData = [];
+            data.forEach(d => {
+                const parsed = parseDate(d.date);
+                if (parsed) {
+                    const rise = timeToMinutes(d["astro.sunrise"]);
+                    const set = timeToMinutes(d["astro.sunset"]);
+                    cleanedData.push({
+                        date: parsed,
+                        dayLength: (set - rise) / 60
+                    });
+                }
+            });
+
+            // Gộp nhóm: Tính trung bình độ dài ngày của toàn quốc theo từng mốc Ngày
+            const nestedData = d3.rollups(cleanedData,
+                v => d3.mean(v, d => d.dayLength),
+                d => d.date
+            ).map(([date, avgLength]) => ({
+                date: date,
+                dayLength: avgLength
+            })).sort((a, b) => a.date - b.date);
+
+            // 3. THIẾT LẬP THANG ĐO (SCALES)
+            const x = d3.scaleTime()
+                .domain(d3.extent(nestedData, d => d.date))
+                .range([0, innerWidth]);
+
+            // TINH CHỈNH TRỤC Y: Cắt sát vào Min và Max để thấy rõ đường cong hình Sin
+            const minLen = d3.min(nestedData, d => d.dayLength);
+            const maxLen = d3.max(nestedData, d => d.dayLength);
+            
+            const y = d3.scaleLinear()
+                .domain([minLen - 0.2, maxLen + 0.2]) // Padding thêm 0.2h ở trên và dưới
+                .range([innerHeight, 0]);
+
+            // 4. KHỞI TẠO DẢI MÀU GRADIENT (Vàng Cam)
+            const defs = svg.append("defs");
+            const gradient = defs.append("linearGradient")
+                .attr("id", "area-gradient")
+                .attr("x1", "0%").attr("y1", "0%")
+                .attr("x2", "0%").attr("y2", "100%");
+            gradient.append("stop").attr("offset", "0%").attr("stop-color", "#f59e0b").attr("stop-opacity", 0.5);
+            gradient.append("stop").attr("offset", "100%").attr("stop-color", "#f59e0b").attr("stop-opacity", 0.05);
+
+            // 5. VẼ LƯỚI & TRỤC TỌA ĐỘ
+            g.append("g").attr("class", "grid").call(d3.axisLeft(y).tickSize(-innerWidth).tickFormat(""));
+            g.append("g").attr("transform", `translate(0, ${innerHeight})`).attr("class", "axis").call(d3.axisBottom(x).ticks(8).tickFormat(d3.timeFormat("%d/%m")));
+            g.append("g").attr("class", "axis").call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + "h"));
+
+            // 6. ĐỊNH NGHĨA AREA VÀ LINE
+            const areaGenerator = d3.area()
+                .x(d => x(d.date))
+                .y0(innerHeight)
+                .y1(d => y(d.dayLength))
+                .curve(d3.curveMonotoneX);
+
+            const lineGenerator = d3.line()
+                .x(d => x(d.date))
+                .y(d => y(d.dayLength))
+                .curve(d3.curveMonotoneX);
+
+            // Vẽ Vùng Gradient
+            g.append("path")
+                .datum(nestedData)
+                .attr("fill", "url(#area-gradient)")
+                .attr("d", areaGenerator);
+
+            // Vẽ Đường viền Line
+            g.append("path")
+                .datum(nestedData)
+                .attr("fill", "none")
+                .attr("stroke", "#f59e0b")
+                .attr("stroke-width", 3)
+                .attr("d", lineGenerator);
+
+            // 7. TƯƠNG TÁC HOVER QUÉT TỌA ĐỘ
+            // Tạo 1 vòng tròn để bắt dính vào điểm dữ liệu
+            const hoverCircle = g.append("circle")
+                .attr("class", "hover-circle")
+                .attr("r", 6)
+                .attr("fill", "#f59e0b")
+                .attr("stroke", "#ffffff")
+                .attr("stroke-width", 2)
+                .style("opacity", 0);
+
+            // Tạo một khung Rect tàng hình bao phủ toàn bộ biểu đồ để hứng sự kiện chuột
+            g.append("rect")
+                .attr("width", innerWidth)
+                .attr("height", innerHeight)
+                .style("fill", "none")
+                .style("pointer-events", "all")
+                .on("mouseover", () => {
+                    d3.select("#tooltip").style("opacity", 1);
+                    hoverCircle.style("opacity", 1);
+                })
+                .on("mouseout", () => {
+                    d3.select("#tooltip").style("opacity", 0);
+                    hoverCircle.style("opacity", 0);
+                })
+                .on("mousemove", function(event) {
+                    // Lấy tọa độ chuột X
+                    const mouseX = d3.pointer(event, this)[0];
+                    const xDate = x.invert(mouseX); // Quy đổi pixel ngược lại ra Ngày
+
+                    // Dùng bisect dò tìm ngày có sẵn trong tập dữ liệu gần với tọa độ chuột nhất
+                    const bisect = d3.bisector(d => d.date).left;
+                    const idx = bisect(nestedData, xDate, 1);
+                    const d0 = nestedData[idx - 1];
+                    const d1 = nestedData[idx];
+                    
+                    // Chọn ngày gần hơn
+                    let dData = d0;
+                    if (d1 && xDate - d0.date > d1.date - xDate) {
+                        dData = d1;
+                    }
+                    if (!dData) return;
+
+                    // Di chuyển chấm tròn tới đúng tọa độ của ngày đó
+                    hoverCircle.attr("cx", x(dData.date)).attr("cy", y(dData.dayLength));
+
+                    // Quy đổi số thực (VD: 12.5) ra Giờ & Phút (12 giờ 30 phút)
+                    const totalHours = dData.dayLength;
+                    const h = Math.floor(totalHours);
+                    const m = Math.round((totalHours - h) * 60);
+
+                    // Cập nhật và di chuyển Tooltip
+                    d3.select("#tooltip")
+                        .style("left", (event.pageX - document.querySelector('.chart-box').offsetLeft + 15) + "px")
+                        .style("top", (event.pageY - document.querySelector('.chart-box').offsetTop - 40) + "px")
+                        .html(`
+                            <div class="tooltip-date">${formatDate(dData.date)}</div>
+                            <div style="font-size: 12px; color: #94a3b8;">Thời gian chiếu sáng:</div>
+                            <div><strong style="color: #f59e0b; font-size: 15px;">${h} giờ ${m} phút</strong></div>
+                        `);
+                });
+
+        }).catch(err => {
+            console.error("Lỗi nạp file dữ liệu:", err);
+            d3.select(".chart-box").html("<h3>Không thể tải file dữ liệu CSV.</h3>");
+        });
+    </script>
+</body>
+</html>

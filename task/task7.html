@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <title> Task 07 With Donut Chart </title>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        svg {
+            background-color: cornsilk;
+            border: 1px solid rgb(115, 215, 185);
+            display: block;
+            margin-top: 10px;
+        }
+
+        .arc path {
+            cursor: pointer;
+        }
+
+        /* Định dạng đường chỉ tay */
+        .label-line {
+            opacity: 0.6;
+        }
+
+        /* Định dạng chữ nhãn bên ngoài */
+        .outside-label {
+            font-size: 10px;
+            font-weight: 500;
+            fill: #333;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 8px 10px;
+            opacity: 0;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            font-size: 14px;
+            z-index: 999;
+        }
+
+        .chart-box {
+            background-color: #cff2f0;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            display: inline-block;
+        }
+
+        .filter-container {
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .filter-container select {
+            padding: 6px 10px;
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 15px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="chart-box">
+        <h2>Task 7 - The frequency of the weather</h2>
+        
+        <div class="filter-container">
+            <label for="regionFilter" style="font-weight: bold;">Chọn Khu vực/Quốc gia: </label>
+            <select id="regionFilter"></select>
+        </div>
+
+        <svg id="donutChart" width="1000"></svg>
+    </div>
+
+    <script>
+        // Link tham khảo gốc: https://d3-graph-gallery.com/graph/donut_label.html
+        // --- HÀM 1: TẢI DỮ LIỆU TỪ FILE CSV ---
+        async function loadData(file_path) {
+             const data = await d3.csv(file_path);
+             return data;
+        }
+
+        // --- HÀM 2: BIẾN ĐỔI VÀ ĐẾM NGÀY CHUẨN ---
+        function transformTheData(data) {
+            const weatherDays = {};
+            
+            data.forEach(d => {
+                const condition = d["day.condition.text"];
+                if (!condition) return; // Bỏ qua dòng rỗng
+                
+                const date = d["date"] || d["day"] || d["time"] || Math.random().toString(); 
+
+                if (!weatherDays[condition]) {
+                    weatherDays[condition] = new Set(); 
+                }
+                weatherDays[condition].add(date); 
+            });
+
+            const result = Object.entries(weatherDays).map(([key, valueSet]) => {
+                return { 
+                    condition: key, 
+                    count: valueSet.size 
+                };
+            });
+
+            result.sort((a,b) => b.count - a.count);
+            return result;
+        }
+
+        // --- HÀM 3: VẼ BIỂU ĐỒ BÁNH DONUT ---
+        function drawDonutChart(data) {
+            const svg = d3.select("#donutChart");
+            
+            // Khử lỗi trùng lặp tooltip khi render lại bằng cách xóa bản cũ
+            d3.selectAll(".tooltip").remove();
+            const tooltip = d3.select("body").append("div").attr("class", "tooltip");
+            
+            const width = 1000;
+            const calculatedHeight = Math.max(500, data.length * 24 + 80);
+            const height = calculatedHeight;
+
+            svg.attr("height", height);
+            svg.selectAll("*").remove(); // Xóa sạch hình cũ để vẽ mới khi chọn filter
+
+            const centerX = width * 0.35; 
+            const centerY = 250;
+            const radius = Math.min(width, 500) / 2 - 40; 
+            
+            const gDonut = svg.append("g")
+                .attr("transform", `translate(${centerX}, ${centerY})`);
+
+            const color = d3.scaleOrdinal(d3.schemeDark2);
+
+            const arc = d3.arc()
+                .innerRadius(radius * 0.5) 
+                .outerRadius(radius * 0.9);
+
+            const pie = d3.pie()
+                .value(d => d.count)
+                .sort(null);
+
+            const data_ready = pie(data);
+
+            // 1. VẼ CÁC MÚI BÁNH DONUT CÓ TRANSITION (HIỆU ỨNG BIẾN ĐỔI MƯỢT MÀ)
+            const slices = gDonut.selectAll(".arc-path")
+                .data(data_ready)
+                .join("path")
+                .attr("class", "arc-path")
+                .attr("fill", d => color(d.data.condition))
+                .attr("stroke", "white")
+                .style("stroke-width", "2px")
+                .style("cursor", "pointer")
+                // ĐÃ SỬA CÚ PHÁP: Tách biệt hẳn hoi sự kiện chuột ra khỏi hiệu ứng transition
+                .on("mouseover", function(event, d) {
+                    tooltip.style("opacity", 1)
+                           .html(`<strong>Trạng thái:</strong> ${d.data.condition}<br/><strong>Số ngày:</strong> ${d.data.count} ngày`);
+                    d3.select(this).style("opacity", 0.7);
+                })
+                .on("mousemove", function(event) {   
+                    tooltip.style("left", (event.pageX + 15) + "px")
+                           .style("top", (event.pageY + 15) + "px");         
+                })
+                .on("mouseleave", function() {
+                    tooltip.style("opacity", 0);
+                    d3.select(this).style("opacity", 1);
+                });
+
+            // THÊM HIỆU ỨNG TRANSITION KHI VẼ/ĐỔI FILTER :
+            slices.transition()
+                .duration(750)
+                .attrTween("d", function(d) {
+                    // Tạo chuyển động chạy vòng tròn từ góc 0 độ đến góc thực tế của bánh
+                    const i = d3.interpolate({startAngle: 0, endAngle: 0}, d);
+                    return function(t) { return arc(i(t)); };
+                });
+
+            // 2. TẠO BẢNG CHÚ THÍCH (LEGEND) XẾP HÀNG DỌC NGĂN NẮP
+            const legend = svg.append("g")
+                .attr("transform", `translate(${centerX + radius + 40}, 40)`);
+
+            const legendItem = legend.selectAll(".legend-item")
+                .data(data)
+                .enter()
+                .append("g")
+                .attr("class", "legend-item")
+                .attr("transform", (d, i) => `translate(0, ${i * 24})`);
+
+            legendItem.append("rect")
+                .attr("width", 14)
+                .attr("height", 14)
+                .attr("rx", 3) 
+                .attr("fill", d => color(d.condition));
+
+            legendItem.append("text")
+                .attr("x", 24) 
+                .attr("y", 12) 
+                .style("font-size", "13px")
+                .style("font-family", "'Times New Roman', Times, serif")
+                .style("fill", "#333")
+                .text(d => `${d.condition} (${d.count} ngày)`);
+        }
+
+        // --- HÀM 4: KHỞI CHẠY ĐỒNG BỘ VÀ TÍCH HỢP FILTER CHUNG ---
+        async function main() {
+            // Tải dữ liệu từ file đã làm sạch
+            const rawData = await loadData("df_weather_fixed_utf8_cleaned.csv");
+
+            // Gom danh sách vùng độc nhất
+            const regions = ["Tất cả khu vực", ...new Set(rawData.map(d => d["location.region"]).filter(Boolean))];
+            
+            // Đổ danh sách vào Dropdown
+            d3.select("#regionFilter")
+                .selectAll("option")
+                .data(regions)
+                .enter()
+                .append("option")
+                .text(d => d)
+                .attr("value", d => d);
+
+            // Hàm kích hoạt lọc dữ liệu và vẽ lại
+            function updateChart(selectedRegion) {
+                let filteredData = rawData;
+                if (selectedRegion !== "Tất cả khu vực") {
+                    filteredData = rawData.filter(d => d["location.region"] === selectedRegion);
+                }
+                
+                // Đưa dữ liệu qua nhà máy biến đổi của Task 7
+                const processedData = transformTheData(filteredData);
+                // Tiến hành vẽ kèm transition
+                drawDonutChart(processedData);
+            }
+
+            // Chạy mặc định ban đầu
+            updateChart("Tất cả khu vực");
+
+            // Lắng nghe hành vi chọn bộ lọc
+            d3.select("#regionFilter").on("change", function() {
+                const selected = d3.select(this).property("value");
+                updateChart(selected);
+            });
+        }
+
+        main();
+    </script>
+</body>
+</html>

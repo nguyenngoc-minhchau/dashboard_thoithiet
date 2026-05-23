@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <title>Task 08 With BoxPlot Chart</title>
+        <style>
+            body {
+                font-family: 'Times New Roman', Times, serif;
+                padding: 20px;
+                background-color: #f5f5f5; /* Màu nền xám sáng nhẹ cho sang, dễ nhìn biểu đồ */
+            }
+            svg {
+                background-color: cornsilk; /* Màu nền kem nhạt cho khung chứa đồ thị */
+                border: 1px solid rgb(115, 215, 185); /* Đường viền xanh mint bảo vệ quanh SVG */
+                display: block;
+                margin-top: 10px;
+            }
+            /* Thiết lập hộp thoại nhỏ xuất hiện khi rê chuột vào dữ liệu (Tooltip) */
+            .tooltip {
+                position: absolute;
+                background: whitesmoke;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                padding: 8px 10px;
+                opacity: 0; /* Mặc định ẩn đi */
+                pointer-events: none; /* Tránh cản trở chuột khi tương tác */
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                font-size: 14px;
+                z-index: 999;
+            }
+            /* Tùy chỉnh nhẹ giao diện bộ lọc cho đẹp */
+            .filter-container {
+                margin-bottom: 15px;
+                font-size: 16px;
+            }
+            .filter-container select {
+                padding: 6px 10px;
+                font-family: 'Times New Roman', Times, serif;
+                font-size: 15px;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="chart-box">
+            <h2> Task 8: Temperature according to weather conditions </h2>
+            
+            <div class="filter-container">
+                <label for="regionFilter" style="font-weight: bold;">Chọn Khu vực muốn lọc: </label>
+                <select id="regionFilter"></select>
+            </div>
+
+            <svg id="boxPlot" width="1000" height="600"></svg>
+        </div>
+        
+        <script>
+            // --- HÀM 1: TẢI DỮ LIỆU TỪ FILE CSV ---
+            async function loadDataForBoxPlot(file_path) {
+                const data = await d3.csv(file_path);
+                return data;              
+            }
+
+            // --- HÀM 2: GOM NHÓM VÀ TÍNH TOÁN CÁC THÔNG SỐ BOXPLOT ---
+            // link nguồn tham khảo: https://observablehq.com/@d3/box-plot/2
+            function transformBoxPlotData(data) {
+                // Sử dụng d3.groups() để gom các dòng có cùng trạng thái thời tiết "day.condition.text" vào chung một nhóm
+                const group_data = d3.groups(data, d => d["day.condition.text"]);
+
+                // Duyệt qua từng nhóm để bóc tách nhiệt độ và tính toán 5 chỉ số thống kê (Min, Q1, Median, Q3, Max)
+                const calculatedBin = group_data.map(([conditionName, records]) => {
+                    
+                    // Lọc ra danh sách nhiệt độ trung bình (day.avgtemp_c) của trạng thái này, ép kiểu số thực và sắp xếp tăng dần
+                    const temperatures = records
+                        .map(r => parseFloat(r["day.avgtemp_c"]))
+                        .filter(t => !isNaN(t)) // Loại bỏ các ô dữ liệu rỗng hoặc lỗi
+                        .sort(d3.ascending);
+
+                    // Điều kiện ràng buộc: Nhóm phải có ít nhất 3 ngày dữ liệu thì mới đủ điều kiện vẽ hộp toán học
+                    if (temperatures.length < 3) return null;
+                
+                    // Khai báo các điểm mốc phân phối nhiệt độ
+                    const min = temperatures[0]; // Giá trị nhỏ nhất tuyệt đối
+                    const max = temperatures[temperatures.length - 1]; // Giá trị lớn nhất tuyệt đối
+                    const q1 = d3.quantile(temperatures, 0.25); // Tứ phân vị thứ nhất (Đáy hộp)
+                    const q2 = d3.quantile(temperatures, 0.5);  // Tứ phân vị thứ hai (Đường trung vị - Median)
+                    const q3 = d3.quantile(temperatures, 0.75); // Tứ phân vị thứ ba (Đỉnh hộp)
+                    const iqr = q3 - q1; // Khoảng cách tứ phân vị (Chiều cao của hộp)
+
+                    // Tính toán độ dài tối đa của hai thanh Râu (Whiskers) để lọc điểm dị biệt
+                    const r0 = Math.max(min, q1 - iqr * 1.5); // Điểm mút râu dưới
+                    const r1 = Math.min(max, q3 + iqr * 1.5); // Điểm mút râu trên
+
+                    // Lọc ra các ngày có nhiệt độ nằm ngoài khoảng râu tiêu chuẩn [r0, r1] để làm điểm dị biệt (Outliers)
+                    const outliers = records.filter(v => {
+                        const t = parseFloat(v["day.avgtemp_c"]); 
+                        return t < r0 || t > r1;
+                    });
+
+                    // Trả về một object chứa toàn bộ nguyên liệu sạch phục vụ cho việc dựng hình bằng D3
+                    return {
+                        xName: conditionName,
+                        quartiles: [q1, q2, q3],
+                        range: [r0, r1],
+                        outliers: outliers
+                    };
+                });
+
+                // Loại bỏ những trạng thái thời tiết bị gắn nhãn null (do quá ít dữ liệu)
+                return calculatedBin.filter(b => b !== null);
+            }
+
+            // --- HÀM 3: VẼ BIỂU ĐỒ BOXPLOT LÊN MÀN HÌNH ---
+            function drawBoxPlotChart(data) {
+                const svg = d3.select("#boxPlot");
+                
+                // Xóa công cụ cũ bị lặp dòng khi cập nhật filter, giữ duy nhất một tooltip trên body
+                d3.selectAll(".tooltip").remove();
+                const tooltip = d3.select("body").append("div").attr("class", "tooltip");
+
+                // Thiết lập kích thước không gian vẽ và các khoảng đệm rìa biên
+                const width = 1000;
+                const height = 600;
+                const marginTop = 40;
+                const marginRight = 40;
+                const marginBottom = 140; // Nhường chỗ cho nhãn chữ xoay nghiêng không bị tràn viền
+                const marginLeft = 60;   // Hiển thị số độ C rõ ràng
+
+                // Xóa sạch mọi nét vẽ cũ để chuẩn bị vẽ lượt mới khi chuyển bộ lọc
+                svg.selectAll("*").remove();
+
+                // 1. THIẾT LẬP THƯỚC ĐO TRỤC X (Dạng danh mục chữ - Định vị vị trí đứng cho các hộp)
+                const x = d3.scaleBand()
+                    .domain(data.map(d => d.xName)) // Đưa danh sách tên trạng thái thời tiết lên trục X
+                    .rangeRound([marginLeft, width - marginRight]) // Giới hạn vùng hiển thị từ trái sang phải
+                    .padding(0.4); // Khoảng trống giữa các cột hộp là 40%
+
+                // 2. THIẾT LẬP THƯỚC ĐO TRỤC Y (Dạng số liên tục - Định vị chiều cao nhiệt độ)
+                const y = d3.scaleLinear()
+                    .domain([
+                        d3.min(data, d => d.range[0]) - 2, // Tạo khoảng thở dưới đáy
+                        d3.max(data, d => d.range[1]) + 2  // Tạo khoảng thở trên đỉnh
+                    ])
+                    .nice() // Làm tròn số đầu trục nhìn cho đẹp mắt
+                    .range([height - marginBottom, marginTop]);
+
+                // 3. TẠO CÁC NHÓM CONTAINER (<g>) CHO MỖI TRẠNG THÁI THỜI TIẾT
+                const g = svg.append("g")
+                    .selectAll("g")
+                    .data(data)
+                    .join("g");
+
+                // 4. VẼ ĐƯỜNG RÂU DỌC (Nối từ điểm mút râu dưới lên điểm mút râu trên)
+                g.append("path")
+                    .attr("stroke", "#333") 
+                    .attr("stroke-width", 1.5)
+                    .attr("d", d => `M${x(d.xName) + x.bandwidth() / 2},${y(d.range[1])}V${y(d.range[0])}`); 
+
+                // 5. VẼ HÌNH HỘP CHỮ NHẬT (Quartiles - Đại diện cho 50% lượng dữ liệu tập trung từ Q1 đến Q3)
+                g.append("path")
+                    .attr("fill", "lightskyblue") // Màu xanh bầu trời mát mẻ cho hình hộp
+                    .attr("stroke", "#333")
+                    .attr("stroke-width", 1.5)
+                    .attr("d", d => `
+                        M${x(d.xName)},${y(d.quartiles[2])}
+                        H${x(d.xName) + x.bandwidth()}
+                        V${y(d.quartiles[0])}
+                        H${x(d.xName)}
+                        Z
+                    `)
+                    // SỰ KIỆN CHUỘT: Hiện hộp thông số chi tiết khi rê chuột vào hộp chữ nhật
+                    .on("mouseover", function(event, d) {
+                        tooltip.style("opacity", 1);
+                        tooltip.html(`
+                            <strong style="color:#2c3e50;">Trạng thái: ${d.xName}</strong><br/>
+                            <hr style="margin: 5px 0; border: 0; border-top: 1px solid #ccc;"/>
+                            Tối đa (Max): ${d.range[1].toFixed(1)} °C<br/>
+                            Tứ phân vị trên (Q3): ${d.quartiles[2].toFixed(1)} °C<br/>
+                            Trung vị (Median): ${d.quartiles[1].toFixed(1)} °C<br/>
+                            Tứ phân vị dưới (Q1): ${d.quartiles[0].toFixed(1)} °C<br/>
+                            Tối thiểu (Min): ${d.range[0].toFixed(1)} °C<br/>
+                            Số điểm dị biệt: ${d.outliers.length} ngày
+                        `);
+                        d3.select(this).style("opacity", 0.7).attr("stroke-width", 2.5); // Làm nổi bật hộp
+                    })
+                    .on("mousemove", function(event) {
+                        tooltip.style("left", (event.pageX + 15) + "px")
+                               .style("top", (event.pageY + 15) + "px");
+                    })
+                    .on("mouseleave", function() {
+                        tooltip.style("opacity", 0); // Ẩn tooltip đi
+                        d3.select(this).style("opacity", 1).attr("stroke-width", 1.5); // Trả lại viền cũ
+                    }); // ĐÃ SỬA: Đóng ngoặc đầy đủ các hàm tương tác sự kiện chuột ở đây!
+
+                // 6. VẼ ĐƯỜNG TRUNG VỊ MEDIAN (Đường vạch kẻ nằm ngang màu đỏ cắt đôi hộp)
+                g.append("path")
+                    .attr("stroke", "crimson") 
+                    .attr("stroke-width", 2.5) 
+                    .attr("d", d => `M${x(d.xName)},${y(d.quartiles[1])}H${x(d.xName) + x.bandwidth()}`);
+
+                // 7. VẼ CÁC ĐIỂM DỊ BIỆT OUTLIERS (Các ngày có nhiệt độ biến động quá dị thường)
+                g.append("g")
+                    .attr("fill", "red") 
+                    .attr("fill-opacity", 0.6)
+                    .attr("stroke", "none")
+                    .attr("transform", d => `translate(${x(d.xName) + x.bandwidth() / 2}, 0)`) 
+                    .selectAll("circle")
+                    .data(d => d.outliers)
+                    .join("circle")
+                    .attr("r", 2.5) 
+                    .attr("cx", () => (Math.random() - 0.5) * 6) // Thuật toán Jitter: Tạo độ rung tránh đè chồng điểm
+                    .attr("cy", d => y(parseFloat(d["day.avgtemp_c"]))); 
+
+                // 8. DỰNG TRỤC HOÀNH (Trục X)
+                const xAxis = svg.append("g")
+                    .attr("transform", `translate(0, ${height - marginBottom})`)
+                    .call(d3.axisBottom(x).tickSizeOuter(0));
+
+                // Xử lý xoay chữ tránh đính chữ trục X
+                xAxis.selectAll("text")
+                    .attr("transform", "rotate(-45)")
+                    .style("text-anchor", "end") 
+                    .attr("dx", "-.8em")
+                    .attr("dy", ".15em") 
+                    .style("font-size", "11px");
+
+                // 9. DỰNG TRỤC TUNG (Trục Y)
+                svg.append("g")
+                    .attr("transform", `translate(${marginLeft}, 0)`)
+                    .call(d3.axisLeft(y).ticks(null, "s"))
+                    .call(g => g.select(".domain").remove()); 
+            }
+            
+            // --- HÀM 4: HÀM KHỞI CHẠY HỆ THỐNG ĐỘNG CÓ BỘ LỌC (MAIN) ---
+            async function main() {
+                // Tải dữ liệu thô từ file CSV
+                const rawData = await loadDataForBoxPlot("df_weather_fixed_utf8_cleaned.csv");
+                
+                // Tự động gộp các khu vực độc nhất từ file CSV làm danh mục bộ lọc (Cột location.region)
+                const regions = ["Tất cả khu vực", ...new Set(rawData.map(d => d["location.region"]).filter(Boolean))];
+                
+                // Đổ danh sách vùng vào thẻ select HTML làm menu chọn vùng
+                d3.select("#regionFilter")
+                    .selectAll("option")
+                    .data(regions)
+                    .enter()
+                    .append("option")
+                    .text(d => d)
+                    .attr("value", d => d);
+
+                // Hàm thực hiện cập nhật lại biểu đồ mỗi khi chọn vùng mới
+                function updateChart(selectedRegion) {
+                    let filteredData = rawData;
+                    if (selectedRegion !== "Tất cả khu vực") {
+                        filteredData = rawData.filter(d => d["location.region"] === selectedRegion);
+                    }
+                    
+                    // Đưa mảng đã lọc đi tính toán thông số hộp
+                    const processedData = transformBoxPlotData(filteredData);
+                    // Vẽ đồ thị
+                    drawBoxPlotChart(processedData);
+                }
+
+                // Chạy mặc định hiển thị toàn bộ vùng lúc mở trang web lần đầu
+                updateChart("Tất cả khu vực");
+
+                // Lắng nghe sự kiện thay đổi của Dropdown bộ lọc để tự động vẽ lại
+                d3.select("#regionFilter").on("change", function(event) {
+                    const selected = d3.select(this).property("value");
+                    updateChart(selected);
+                });
+            }
+            
+            // Kích hoạt toàn bộ hệ thống
+            main();
+        </script>
+    </body>
+</html>

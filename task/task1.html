@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Task 1: Xu Hướng Nhiệt Độ Theo Vùng</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* === GIAO DIỆN NỀN SÁNG CHUẨN ĐỒ ÁN === */
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f7fb;
+            color: #222;
+        }
+
+        .chart-box {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
+            max-width: 900px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #0f172a;
+            text-align: center;
+        }
+
+        /* === CSS CHO KHU VỰC LEGEND CHÚ THÍCH === */
+        .legend-area {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: #475569;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+        }
+
+            .legend-item:hover {
+                background: #f8fafc;
+                border-color: #cbd5e1;
+            }
+
+            .legend-item.inactive {
+                opacity: 0.35;
+                background: transparent;
+                border-color: transparent;
+                box-shadow: none;
+            }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        /* Tùy chỉnh lưới và trục tọa độ của D3 */
+        .grid line {
+            stroke: #e5e7eb;
+        }
+
+        .grid path {
+            stroke: none;
+        }
+
+        .axis text {
+            font-size: 11px;
+            fill: #555;
+        }
+
+        /* Các đường và đỉnh */
+        .region-line {
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: opacity 0.2s ease, stroke-width 0.2s ease;
+        }
+
+        .vertex-point {
+            cursor: pointer;
+            transition: r 0.15s ease, fill-opacity 0.15s ease, opacity 0.2s ease;
+        }
+
+        /* Tooltip */
+        .d3-tooltip {
+            position: absolute;
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 100;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            line-height: 1.5;
+        }
+
+        .tooltip-date {
+            font-weight: bold;
+            color: #94a3b8;
+            margin-bottom: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="chart-box">
+        <div class="chart-title">Task 1: Diễn biến nhiệt độ trung bình theo từng Vùng Địa Lý</div>
+
+        <div id="task1-legend" class="legend-area"></div>
+
+        <svg id="tempChart" width="840" height="450"></svg>
+        <div id="tooltip" class="d3-tooltip"></div>
+    </div>
+
+    <script>
+        const svg = d3.select("#tempChart");
+        const width = +svg.attr("width");
+        const height = +svg.attr("height");
+        const margin = { top: 20, right: 30, bottom: 40, left: 50 };
+
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+
+        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const parseDate = d3.timeParse("%m/%d/%Y");
+        const formatDate = d3.timeFormat("%d/%m/%Y");
+
+        let selectedRegion = null;
+
+        d3.csv("df_weather_fixed_utf8_cleaned.csv").then(data => {
+
+            let cleanedData = [];
+            data.forEach(d => {
+                const parsed = parseDate(d.date);
+                if (parsed && d["location.region"]) {
+                    cleanedData.push({
+                        date: parsed,
+                        region: d["location.region"],
+                        avgTemp: +d["day.avgtemp_c"]
+                    });
+                }
+            });
+
+            const rolledData = d3.rollups(cleanedData, v => d3.mean(v, d => d.avgTemp), d => d.region, d => d.date);
+
+            const regionsData = rolledData.map(([region, dates]) => ({
+                region: region,
+                values: dates.map(([date, avgTemp]) => ({ date, avgTemp })).sort((a, b) => a.date - b.date)
+            }));
+
+            const x = d3.scaleTime().domain(d3.extent(cleanedData, d => d.date)).range([0, innerWidth]);
+            const y = d3.scaleLinear().domain([d3.min(cleanedData, d => d.avgTemp) - 1, d3.max(cleanedData, d => d.avgTemp) + 1]).range([innerHeight, 0]);
+            const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+            // ==========================================
+            // TẠO LEGEND (CHÚ THÍCH) ĐỘNG TỪ DỮ LIỆU
+            // ==========================================
+            const legendContainer = d3.select("#task1-legend");
+
+            const legendItems = legendContainer.selectAll(".legend-item")
+                .data(regionsData)
+                .enter()
+                .append("div")
+                .attr("class", "legend-item")
+                .on("click", function (event, d) {
+                    event.stopPropagation();
+                    toggleHighlight(d.region);
+                });
+
+            legendItems.append("div")
+                .attr("class", "legend-color")
+                .style("background-color", d => color(d.region));
+
+            legendItems.append("span")
+                .text(d => d.region);
+
+
+            // ==========================================
+            // VẼ TRỤC VÀ ĐƯỜNG LƯỚI
+            // ==========================================
+            g.append("g").attr("class", "grid").call(d3.axisLeft(y).tickSize(-innerWidth).tickFormat(""));
+            g.append("g").attr("transform", `translate(0, ${innerHeight})`).attr("class", "axis").call(d3.axisBottom(x).ticks(8).tickFormat(d3.timeFormat("%d/%m")));
+            g.append("g").attr("class", "axis").call(d3.axisLeft(y).tickFormat(d => d + "°C"));
+
+            const lineGenerator = d3.line().x(d => x(d.date)).y(d => y(d.avgTemp)).curve(d3.curveMonotoneX);
+
+            // Vẽ Line
+            const lines = g.selectAll(".region-line")
+                .data(regionsData)
+                .enter().append("path")
+                .attr("class", "region-line")
+                .attr("d", d => lineGenerator(d.values))
+                .attr("stroke", d => color(d.region))
+                .attr("stroke-width", 2.5)
+                .style("cursor", "pointer")
+                .on("click", function (event, d) {
+                    event.stopPropagation();
+                    toggleHighlight(d.region);
+                });
+
+            // Vẽ Đỉnh nút (Vertices)
+            const allPoints = regionsData.flatMap(r => r.values.map(v => ({ region: r.region, date: v.date, avgTemp: v.avgTemp })));
+
+            const points = g.selectAll(".vertex-point")
+                .data(allPoints)
+                .enter().append("circle")
+                .attr("class", "vertex-point")
+                .attr("cx", d => x(d.date))
+                .attr("cy", d => y(d.avgTemp))
+                .attr("r", 3)
+                .attr("fill", d => color(d.region))
+                .attr("fill-opacity", 0.6)
+                .on("mouseover", function (event, d) {
+                    if (selectedRegion && selectedRegion !== d.region) return;
+
+                    d3.select(this).attr("r", 6).attr("fill-opacity", 1);
+                    d3.select("#tooltip").style("opacity", 1).html(`
+                            <div class="tooltip-date">${formatDate(d.date)}</div>
+                            <div style="margin-bottom:2px;"><span style="color:${color(d.region)}">●</span> <b>${d.region}</b></div>
+                            <div>Nhiệt độ TB: <b style="color:#38bdf8">${d.avgTemp.toFixed(1)} °C</b></div>
+                        `);
+                })
+                .on("mousemove", function (event) {
+                    d3.select("#tooltip")
+                        .style("left", (event.pageX - document.querySelector('.chart-box').offsetLeft + 15) + "px")
+                        .style("top", (event.pageY - document.querySelector('.chart-box').offsetTop - 40) + "px");
+                })
+                .on("mouseout", function () {
+                    d3.select(this).attr("r", 3).attr("fill-opacity", 0.6);
+                    d3.select("#tooltip").style("opacity", 0);
+                });
+
+
+            // ==========================================
+            // HÀM XỬ LÝ LOGIC HIGHLIGHT ĐỒNG BỘ
+            // ==========================================
+            function toggleHighlight(regionName) {
+                if (selectedRegion === regionName) {
+                    // Reset: Hiển thị lại tất cả
+                    selectedRegion = null;
+                    lines.style("opacity", 1).attr("stroke-width", 2.5);
+                    points.style("opacity", 1);
+                    legendItems.classed("inactive", false);
+                } else {
+                    // Highlight vùng được chọn, mờ các vùng khác
+                    selectedRegion = regionName;
+
+                    lines.style("opacity", d => d.region === selectedRegion ? 1 : 0.1)
+                        .attr("stroke-width", d => d.region === selectedRegion ? 4 : 2);
+
+                    points.style("opacity", d => d.region === selectedRegion ? 1 : 0.05);
+
+                    // Cập nhật giao diện Legend
+                    legendItems.classed("inactive", d => d.region !== selectedRegion);
+                }
+            }
+
+            // Click vào khoảng trống (bên trong svg) để reset
+            svg.on("click", function () {
+                selectedRegion = null;
+                lines.style("opacity", 1).attr("stroke-width", 2.5);
+                points.style("opacity", 1);
+                legendItems.classed("inactive", false);
+            });
+
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <title>Task 2 - Nhiệt độ chuyên nghiệp</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background-color: #f5f5f5; }
+        .chart-box { background-color: #fff; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .bar { fill: #4a90e2; }
+        .bar.avg { fill: #e53e3e; } /* Màu đỏ cho cột trung bình */
+        .bar:hover { opacity: 0.8; }
+        .tooltip { position: absolute; background: #333; color: #fff; padding: 5px 10px; border-radius: 4px; pointer-events: none; font-size: 12px; opacity: 0; }
+        .filter-container { margin-bottom: 20px; }
+        select { padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <div class="chart-box">
+        <h2>Trung bình nhiệt độ theo khu vực</h2>
+        <div class="filter-container">
+            <label>Chọn Vùng: </label>
+            <select id="regionFilter"></select>
+        </div>
+        <svg id="barChart" width="800" height="450"></svg>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        async function drawBarChart() {
+            const rawData = await d3.csv("df_weather_fixed_utf8_cleaned.csv");
+            
+            // Tính trung bình toàn quốc
+            const nationalAvg = d3.mean(rawData, d => +d['day.avgtemp_c']);
+            
+            // Gom nhóm vùng
+            const grouped = Array.from(d3.rollup(rawData, 
+                v => d3.mean(v, d => +d['day.avgtemp_c']), 
+                d => d['location.region']
+            )).map(([region, temp]) => ({ region, temp: +temp.toFixed(1) }));
+
+            const regions = ["Tất cả", ...grouped.map(d => d.region)];
+            d3.select("#regionFilter").selectAll("option").data(regions).enter().append("option").text(d => d);
+
+            const svg = d3.select("#barChart");
+            const width = 800, height = 400;
+            const margin = { top: 40, right: 20, bottom: 100, left: 50 };
+
+            const x = d3.scaleBand().range([margin.left, width - margin.right]).padding(0.3);
+            const y = d3.scaleLinear().range([height - margin.bottom, margin.top]).domain([0, 35]);
+            const tooltip = d3.select("#tooltip");
+
+            function update(selectedRegion) {
+                let displayData = selectedRegion === "Tất cả" ? [...grouped] : grouped.filter(d => d.region === selectedRegion);
+                displayData.push({ region: "TB Cả nước", temp: +nationalAvg.toFixed(1), isAvg: true });
+
+                x.domain(displayData.map(d => d.region));
+                svg.selectAll("*").remove(); // Xóa cũ vẽ mới
+
+                // Vẽ Bar
+                svg.selectAll(".bar").data(displayData).enter().append("rect")
+                    .attr("class", d => d.isAvg ? "bar avg" : "bar")
+                    .attr("x", d => x(d.region)).attr("width", x.bandwidth())
+                    .attr("y", height - margin.bottom).attr("height", 0)
+                    .on("mouseover", function(event, d) {
+                        d3.select(this).style("opacity", 0.7);
+                        tooltip.style("opacity", 1)
+                               .html(`Vùng: ${d.region}<br>Nhiệt độ: <b>${d.temp}°C</b>`);
+                    })
+                    .on("mousemove", event => tooltip.style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 20) + "px"))
+                    .on("mouseout", function() {
+                        d3.select(this).style("opacity", 1);
+                        tooltip.style("opacity", 0);
+                    })
+                    .transition().duration(800)
+                    .attr("y", d => y(d.temp)).attr("height", d => height - margin.bottom - y(d.temp));
+
+                // Vẽ trục X với chữ XÉO
+                svg.append("g").attr("transform", `translate(0,${height - margin.bottom})`)
+                    .call(d3.axisBottom(x))
+                    .selectAll("text")
+                    .attr("transform", "rotate(-45)")
+                    .style("text-anchor", "end")
+                    .attr("dx", "-0.5em").attr("dy", "0.5em");
+
+                svg.append("g").attr("transform", `translate(${margin.left},0)`).call(d3.axisLeft(y));
+            }
+
+            d3.select("#regionFilter").on("change", function() { update(this.value); });
+            update("Tất cả");
+        }
+        drawBarChart();
+    </script>
+</body>
+</html>
